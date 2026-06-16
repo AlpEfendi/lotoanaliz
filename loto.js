@@ -1,0 +1,367 @@
+// ════════════════════════════════════════════════════
+//  LOTO ANALİZ MOTORU v3 — Sayısal, Süper, Şans Topu
+//  LOTO_CONFIG ile parametrize
+// ════════════════════════════════════════════════════
+
+let userDraws = JSON.parse(localStorage.getItem(LOTO_CONFIG.storageKey) || '[]');
+function saveUser() { localStorage.setItem(LOTO_CONFIG.storageKey, JSON.stringify(userDraws)); }
+function allDraws() { return [...LOTO_CONFIG.data, ...userDraws]; }
+
+// ── Frekans ──────────────────────────────────────────
+function freq(draws) {
+  const f = {};
+  for (let i = 1; i <= LOTO_CONFIG.maxNum; i++) f[i] = 0;
+  for (const d of draws) {
+    for (const n of d[2]) {
+      if (n >= 1 && n <= LOTO_CONFIG.maxNum) f[n]++;
+    }
+  }
+  return f;
+}
+
+function freqBonus(draws) {
+  const f = {};
+  const bn = LOTO_CONFIG.bonusMax;
+  if (!bn) return f;
+  for (let i = 1; i <= bn; i++) f[i] = 0;
+  for (const d of draws) {
+    if (d[3] >= 1 && d[3] <= bn) f[d[3]]++;
+  }
+  return f;
+}
+
+// ── Gecikmiş sayılar ─────────────────────────────────
+function recentMissing(draws, n) {
+  const recent = draws.slice(-n);
+  const seen = new Set(recent.flatMap(d => d[2]));
+  return Array.from({length: LOTO_CONFIG.maxNum}, (_, i) => i + 1).filter(x => !seen.has(x));
+}
+
+// ── Renk sınıfı ──────────────────────────────────────
+function colorClass(c, max) {
+  const p = max > 0 ? c / max : 0;
+  if (p >= .85) return ['c5', '#2ecc8a'];
+  if (p >= .65) return ['c4', '#1dc7bb'];
+  if (p >= .45) return ['c3', '#8888b0'];
+  if (p >= .25) return ['c2', '#f09030'];
+  return ['c1', '#e85555'];
+}
+
+// ── Trend analizi ─────────────────────────────────────
+function analyzeTrends(draws, windowSize = 30) {
+  const recent = draws.slice(-windowSize);
+  const recentFreq = freq(recent);
+  const trend = {};
+  for (let i = 1; i <= LOTO_CONFIG.maxNum; i++) {
+    trend[i] = {
+      freq: recentFreq[i],
+      pct: recentFreq[i] / windowSize,
+      isHot: recentFreq[i] / windowSize >= 0.15,
+      isCold: recentFreq[i] === 0
+    };
+  }
+  return trend;
+}
+
+// ── Altın sayılar ─────────────────────────────────────
+function goldNumbers(draws) {
+  const gold = LOTO_CONFIG.goldNumbers;
+  const f = freq(draws);
+  return gold.map(n => ({
+    num: n,
+    freq: f[n] || 0,
+    pct: f[n] / draws.length,
+    trend: f[n] > 0 ? 'aktif' : 'gecikme'
+  })).sort((a, b) => b.freq - a.freq);
+}
+
+// ── Ağırlıklı pick ───────────────────────────────────
+function weightedPick(pool, freqMap, count, opts = {}) {
+  const boost = opts.boost || 1;
+  const items = [...new Set(pool)].filter(n => n >= 1 && n <= LOTO_CONFIG.maxNum)
+    .map(n => ({ n, w: Math.max((freqMap[n] || 0) * boost, 0.1) }));
+  const picked = [];
+  while (picked.length < count && items.length) {
+    const total = items.reduce((s, x) => s + x.w, 0);
+    let r = Math.random() * total;
+    let idx = 0;
+    for (; idx < items.length - 1; idx++) { r -= items[idx].w; if (r <= 0) break; }
+    picked.push(items[idx].n);
+    items.splice(idx, 1);
+  }
+  return picked.sort((a, b) => a - b);
+}
+
+// ── Ball styles ───────────────────────────────────────
+const ballStyles = [
+  {bg:'rgba(240,192,64,.18)',bc:'#f0c040',c:'#f0c040'},
+  {bg:'rgba(46,204,138,.15)',bc:'#2ecc8a',c:'#2ecc8a'},
+  {bg:'rgba(29,199,187,.14)',bc:'#1dc7bb',c:'#1dc7bb'},
+  {bg:'rgba(124,107,255,.14)',bc:'#7c6bff',c:'#7c6bff'},
+  {bg:'rgba(240,144,48,.13)',bc:'#f09030',c:'#f09030'},
+  {bg:'rgba(176,111,255,.13)',bc:'#b06fff',c:'#b06fff'},
+];
+const bonusStyle = {bg:'rgba(255,80,80,.18)',bc:'#ff6060',c:'#ff6060'};
+
+function ballsHtml(nums, bonusNum) {
+  let h = nums.map((n, i) =>
+    `<div class="ball" style="background:${ballStyles[i%6].bg};border-color:${ballStyles[i%6].bc};color:${ballStyles[i%6].c}">${n}</div>`
+  ).join('');
+  if (bonusNum !== undefined) {
+    h += `<div class="ball-sep">+</div><div class="ball bonus-ball" style="background:${bonusStyle.bg};border-color:${bonusStyle.bc};color:${bonusStyle.c}">${bonusNum}</div>`;
+  }
+  return h;
+}
+
+// ── Render Öneri ─────────────────────────────────────
+function renderOneri(f, sorted, miss20) {
+  const trends = analyzeTrends(allDraws(), 30);
+  const hotNumbers = Object.entries(trends).filter(([, t]) => t.isHot).map(([n]) => +n);
+  const goldStats = goldNumbers(allDraws());
+  const goldNums = goldStats.map(g => g.num);
+
+  const partnerPairs = {};
+  for (let i = 1; i <= LOTO_CONFIG.maxNum; i++) {
+    const p = [];
+    for (const diff of [5, 10, 15]) {
+      if (i - diff >= 1) p.push(i - diff);
+      if (i + diff <= LOTO_CONFIG.maxNum) p.push(i + diff);
+    }
+    partnerPairs[i] = p;
+  }
+
+  const topPool = sorted.slice(0, 15).map(([n]) => n);
+  const final1 = weightedPick(topPool, f, LOTO_CONFIG.pickCount || 6, {boost: 1.5});
+
+  let missPool = [...miss20];
+  if (missPool.length < (LOTO_CONFIG.pickCount || 6)) {
+    const extra = sorted.map(([n]) => n).filter(n => !missPool.includes(n));
+    missPool = [...missPool, ...extra.slice(0, 25)];
+  }
+  const final2 = weightedPick(missPool, f, LOTO_CONFIG.pickCount || 6, {boost: 0.8});
+
+  // Şans Topu bonusu
+  let bonusHtml1 = '', bonusHtml2 = '';
+  if (LOTO_CONFIG.bonusMax) {
+    const bDraws = allDraws();
+    const bf = freqBonus(bDraws);
+    const bSorted = Object.entries(bf).map(([k,v])=>[+k,v]).sort((a,b)=>b[1]-a[1]);
+    const b1 = bSorted[Math.floor(Math.random() * 5)][0];
+    const b2 = bSorted[Math.floor(Math.random() * 7) + 2][0];
+    bonusHtml1 = `<div class="bonus-hint">🎯 Şans Topu önerisi: <span style="color:#ff6060;font-weight:700">${b1}</span></div>`;
+    bonusHtml2 = `<div class="bonus-hint">🎯 Şans Topu önerisi: <span style="color:#ff6060;font-weight:700">${b2}</span></div>`;
+  }
+
+  document.getElementById('oGrid').innerHTML = `
+    <div class="oneri-card">
+      <h3>Kolon 1 — Yüksek Frekans</h3>
+      <p>En sık çıkan sayılar havuzundan ağırlıklı rastgele seçim.</p>
+      <div class="balls">${ballsHtml(final1)}</div>
+      ${bonusHtml1}
+    </div>
+    <div class="oneri-card">
+      <h3>Kolon 2 — Gecikmiş + Güçlü</h3>
+      <p>Son 20'de görülmemiş, frekans ağırlıklı seçim.</p>
+      <div class="balls">${ballsHtml(final2)}</div>
+      ${bonusHtml2}
+    </div>`;
+}
+
+// ── Ana render ────────────────────────────────────────
+function render() {
+  const draws = allDraws();
+  const f = freq(draws);
+  const sorted = Object.entries(f).map(([k, v]) => [+k, v]).sort((a, b) => b[1] - a[1]);
+  const max = sorted[0][1];
+  const miss30 = recentMissing(draws, 30);
+  const miss20 = recentMissing(draws, 20);
+  const trends = analyzeTrends(draws, 30);
+  const hotNums = Object.entries(trends).filter(([, t]) => t.isHot).map(([n]) => +n);
+
+  // Stats
+  document.getElementById('sTotal').textContent = draws.length;
+  document.getElementById('sTop').textContent = `${sorted[0][0]} (${sorted[0][1]}x)`;
+  document.getElementById('sBot').textContent = `${sorted[sorted.length-1][0]} (${sorted[sorted.length-1][1]}x)`;
+  document.getElementById('sMiss').textContent = miss30.length;
+  document.getElementById('sHot').textContent = hotNums.length;
+  document.getElementById('sGold').textContent = LOTO_CONFIG.goldNumbers.length;
+  document.getElementById('hSub').textContent = `${draws.length} çekiliş · 1-${LOTO_CONFIG.maxNum} ${LOTO_CONFIG.gameName} · ${LOTO_CONFIG.sinceLabel}`;
+  const allHfts = draws.map(d => d[0]);
+  document.getElementById('iHft').value = Math.max(...allHfts) + 1;
+  document.getElementById('hBadge').textContent = `Son: ${draws[draws.length-1][1]}`;
+
+  // Harita
+  const grid = document.getElementById('gGrid');
+  grid.innerHTML = '';
+  const cols = Math.min(LOTO_CONFIG.maxNum <= 34 ? 12 : 18, LOTO_CONFIG.maxNum);
+  grid.style.gridTemplateColumns = `repeat(${LOTO_CONFIG.maxNum <= 34 ? 12 : 18}, 1fr)`;
+  for (let n = 1; n <= LOTO_CONFIG.maxNum; n++) {
+    const c = f[n];
+    const [cls] = colorClass(c, max);
+    const d = document.createElement('div');
+    d.className = 'gc ' + cls;
+    d.title = `${n} → ${c} kez`;
+    d.innerHTML = `<span class="gn">${n}</span><span class="gv">${c}</span>`;
+    grid.appendChild(d);
+  }
+
+  // Sıralama
+  const topEl = document.getElementById('rTop');
+  const botEl = document.getElementById('rBot');
+  topEl.innerHTML = '';
+  botEl.innerHTML = '';
+  sorted.slice(0, 20).forEach(([n, c]) => {
+    const [, col] = colorClass(c, max);
+    const pct = Math.round(c / max * 100);
+    const row = `<div class="ri"><div class="rball" style="background:${col}18;border-color:${col};color:${col}">${n}</div><div class="rb-wrap"><div class="rb" style="width:${pct}%;background:${col}"></div></div><span class="rc">${c}x</span></div>`;
+    topEl.innerHTML += row;
+  });
+  [...sorted].sort((a, b) => a[1] - b[1]).slice(0, 20).forEach(([n, c]) => {
+    const [, col] = colorClass(c, max);
+    const pct = Math.round(c / max * 100);
+    botEl.innerHTML += `<div class="ri"><div class="rball" style="background:${col}18;border-color:${col};color:${col}">${n}</div><div class="rb-wrap"><div class="rb" style="width:${pct}%;background:${col}"></div></div><span class="rc">${c}x</span></div>`;
+  });
+
+  // Gecikmiş
+  const mc = document.getElementById('cMiss');
+  mc.innerHTML = miss30.sort((a, b) => f[b] - f[a]).map(n => {
+    const [, col] = colorClass(f[n], max);
+    return `<span class="chip" style="background:${col}15;border-color:${col};color:${col}">${n} <span style="opacity:.6;font-size:0.75rem">(${f[n]}x)</span></span>`;
+  }).join('');
+
+  // Hot numbers
+  const hotEl = document.getElementById('gHot');
+  hotEl.innerHTML = '';
+  hotEl.style.gridTemplateColumns = `repeat(${LOTO_CONFIG.maxNum <= 34 ? 12 : 18}, 1fr)`;
+  for (let n = 1; n <= LOTO_CONFIG.maxNum; n++) {
+    const t = trends[n];
+    const [cls] = colorClass(t.freq, max);
+    const d2 = document.createElement('div');
+    d2.className = 'gc ' + cls;
+    d2.style.opacity = t.isHot ? '1' : '0.22';
+    d2.title = `${n}: ${t.freq}x son 30`;
+    d2.innerHTML = `<span class="gn">${n}</span><span class="gv">${t.freq}</span>`;
+    hotEl.appendChild(d2);
+  }
+
+  // Gold
+  const goldEl = document.getElementById('rGold');
+  const goldStats = goldNumbers(draws);
+  goldEl.innerHTML = goldStats.map(g => {
+    const [, col] = colorClass(g.freq, max);
+    const pct = Math.round(g.freq / max * 100);
+    return `<div class="ri"><div class="rball" style="background:${col}18;border-color:${col};color:${col}">${g.num}</div><div class="rb-wrap"><div class="rb" style="width:${pct}%;background:${col}"></div></div><span class="rc">${g.freq}x</span></div>`;
+  }).join('');
+
+  // Çekiliş tablosu
+  const cols2 = ['#2ecc8a','#1dc7bb','#8888b0','#f09030','#e85555','#7c6bff'];
+  const tb = document.getElementById('tBody');
+  const userKeys = new Set(userDraws.map(d => `${d[0]}_${d[1]}`));
+  tb.innerHTML = [...draws].reverse().slice(0, 80).map(([hft, tarih, nums, bonus]) => {
+    const isNew = userKeys.has(`${hft}_${tarih}`);
+    const balls = nums.map((n, i) =>
+      `<span class="mb" style="background:${cols2[i%6]}18;border-color:${cols2[i%6]};color:${cols2[i%6]}">${n}</span>`
+    ).join('') + (bonus ? `<span class="mb bonus-mb" style="background:#ff606020;border-color:#ff6060;color:#ff6060">+${bonus}</span>` : '');
+    const del = isNew ? `<button class="del" onclick="deleteDraw(${hft},'${tarih}')">✕</button>` : '';
+    return `<tr${isNew?' class="newrow"':''}><td style="color:var(--text3);font-size:0.8rem">${hft}</td><td>${tarih}</td><td>${balls}</td><td>${del}</td></tr>`;
+  }).join('');
+
+  // Öneri
+  renderOneri(f, sorted, miss20);
+}
+
+// ── Form ─────────────────────────────────────────────
+function addDraw() {
+  const errEl = document.getElementById('fErr');
+  errEl.style.display = 'none';
+  const hft = parseInt(document.getElementById('iHft').value);
+  const date = document.getElementById('iDate').value.trim();
+  const raw = document.getElementById('iNums').value.trim();
+  const bonusRaw = document.getElementById('iBonus') ? document.getElementById('iBonus').value.trim() : '';
+
+  if (!hft || hft < 1) return showErr('Hafta numarası gerekli.');
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) return showErr('Tarih: GG/AA/YYYY');
+  const parts = raw.split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
+  const cnt = LOTO_CONFIG.pickCount || 6;
+  if (parts.length !== cnt) return showErr(`Tam ${cnt} sayı giriniz.`);
+  if (parts.some(n => n < 1 || n > LOTO_CONFIG.maxNum)) return showErr(`Sayılar 1-${LOTO_CONFIG.maxNum} arasında olmalı.`);
+  if (new Set(parts).size !== cnt) return showErr('Tekrarsız sayılar giriniz.');
+
+  let bonus = undefined;
+  if (LOTO_CONFIG.bonusMax && bonusRaw) {
+    bonus = parseInt(bonusRaw);
+    if (isNaN(bonus) || bonus < 1 || bonus > LOTO_CONFIG.bonusMax) return showErr(`Şans Topu 1-${LOTO_CONFIG.bonusMax} arası.`);
+  }
+
+  userDraws.push([hft, date, parts.sort((a, b) => a - b), bonus]);
+  saveUser();
+  render();
+  document.getElementById('iNums').value = '';
+  document.getElementById('iDate').value = '';
+  if (document.getElementById('iBonus')) document.getElementById('iBonus').value = '';
+  toast('✓ Çekiliş eklendi');
+}
+
+function deleteDraw(hft, tarih) {
+  userDraws = userDraws.filter(d => !(d[0] === hft && d[1] === tarih));
+  saveUser();
+  render();
+  toast('Silindi');
+}
+
+function regenerateOneri() {
+  const draws = allDraws();
+  const f = freq(draws);
+  const sorted = Object.entries(f).map(([k, v]) => [+k, v]).sort((a, b) => b[1] - a[1]);
+  const miss20 = recentMissing(draws, 20);
+  renderOneri(f, sorted, miss20);
+  toast('🔄 Yeni öneri üretildi');
+}
+
+function showErr(msg) {
+  const e = document.getElementById('fErr');
+  e.textContent = msg;
+  e.style.display = 'block';
+}
+
+let _toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('on'), 2400);
+}
+
+function exportCSV() {
+  const rows = [['Hafta','Tarih','S1','S2','S3','S4','S5','S6','Bonus']];
+  for (const [h, t, n, b] of allDraws()) rows.push([h, t, ...n, b||'']);
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  a.download = LOTO_CONFIG.csvName;
+  a.click();
+}
+
+let _activeTab = 'harita';
+function tab(id, btn) {
+  document.getElementById('t-' + _activeTab).style.display = 'none';
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  _activeTab = id;
+  document.getElementById('t-' + id).style.display = '';
+  btn.classList.add('on');
+}
+
+// Auto-format tarih
+document.addEventListener('DOMContentLoaded', () => {
+  const di = document.getElementById('iDate');
+  if (di) di.addEventListener('input', function() {
+    let v = this.value.replace(/\D/g,'');
+    if (v.length >= 3) v = v.slice(0,2)+'/'+v.slice(2);
+    if (v.length >= 6) v = v.slice(0,5)+'/'+v.slice(5);
+    this.value = v.slice(0,10);
+  });
+  const ni = document.getElementById('iNums');
+  if (ni) ni.addEventListener('keydown', e => { if(e.key==='Enter') addDraw(); });
+  render();
+});
