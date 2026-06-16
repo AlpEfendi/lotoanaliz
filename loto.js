@@ -193,8 +193,6 @@ function render() {
   // Harita
   const grid = document.getElementById('gGrid');
   grid.innerHTML = '';
-  const cols = Math.min(LOTO_CONFIG.maxNum <= 34 ? 12 : 18, LOTO_CONFIG.maxNum);
-  grid.style.gridTemplateColumns = `repeat(${LOTO_CONFIG.maxNum <= 34 ? 12 : 18}, 1fr)`;
   for (let n = 1; n <= LOTO_CONFIG.maxNum; n++) {
     const c = f[n];
     const [cls] = colorClass(c, max);
@@ -232,7 +230,6 @@ function render() {
   // Hot numbers
   const hotEl = document.getElementById('gHot');
   hotEl.innerHTML = '';
-  hotEl.style.gridTemplateColumns = `repeat(${LOTO_CONFIG.maxNum <= 34 ? 12 : 18}, 1fr)`;
   for (let n = 1; n <= LOTO_CONFIG.maxNum; n++) {
     const t = trends[n];
     const [cls] = colorClass(t.freq, max);
