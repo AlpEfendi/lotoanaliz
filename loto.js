@@ -385,7 +385,7 @@ function render() {
     const [cls] = colorClass(t.freq, max);
     const d2 = document.createElement('div');
     d2.className = 'gc ' + cls;
-    d2.style.opacity = t.isHot ? '1' : '0.22';
+    d2.style.opacity = t.isHot ? '1' : '0.46';
     d2.title = `${n}: ${t.freq}x son 30`;
     d2.innerHTML = `<span class="gn">${n}</span><span class="gv">${t.freq}</span>`;
     hotEl.appendChild(d2);
