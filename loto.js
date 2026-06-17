@@ -20,7 +20,10 @@ function drawDateKey(draw) {
   return year * 10000 + month * 100 + day;
 }
 function allDraws() {
-  return [...LOTO_CONFIG.data, ...userDraws].sort((a, b) => drawDateKey(a) - drawDateKey(b));
+  const byDate = new Map();
+  for (const draw of LOTO_CONFIG.data) byDate.set(draw[1], draw);
+  for (const draw of userDraws) byDate.set(draw[1], draw);
+  return [...byDate.values()].sort((a, b) => drawDateKey(a) - drawDateKey(b));
 }
 
 // ── Frekans ──────────────────────────────────────────
@@ -428,6 +431,7 @@ function addDraw() {
 
   if (!hft || hft < 1) return showErr('Hafta numarası gerekli.');
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) return showErr('Tarih: GG/AA/YYYY');
+  if (allDraws().some(d => d[1] === date)) return showErr('Bu tarih zaten kayıtlı.');
   const parts = raw.split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
   const cnt = LOTO_CONFIG.pickCount || 6;
   if (parts.length !== cnt) return showErr(`Tam ${cnt} sayı giriniz.`);
@@ -448,6 +452,98 @@ function addDraw() {
   document.getElementById('iDate').value = '';
   if (document.getElementById('iBonus')) document.getElementById('iBonus').value = '';
   toast('✓ Çekiliş eklendi');
+}
+
+function nextWeekForDate(draws, date) {
+  const year = Number(String(date).slice(-4));
+  const sameYear = draws.filter(d => String(d[1]).endsWith(`/${year}`));
+  if (!sameYear.length) return 1;
+  return Math.max(...sameYear.map(d => Number(d[0]) || 0)) + 1;
+}
+
+function normalizeImportDate(raw) {
+  const txt = String(raw || '').trim().replace(/\./g, '/');
+  const m = txt.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return '';
+  return `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')}/${m[3]}`;
+}
+
+function parseImportLine(line) {
+  const clean = line.trim();
+  if (!clean || /^\d{4}$/.test(clean) || clean.toLowerCase().startsWith('tarih')) return null;
+
+  const parts = clean.split(/[\s;\t,|-]+/).filter(Boolean);
+  const dateIdx = parts.findIndex(p => /^\d{1,2}[./]\d{1,2}[./]\d{4}$/.test(p));
+  if (dateIdx === -1) return null;
+
+  const date = normalizeImportDate(parts[dateIdx]);
+  const numsAfterDate = parts.slice(dateIdx + 1).map(Number).filter(n => Number.isInteger(n));
+  if (!date || numsAfterDate.length < (LOTO_CONFIG.pickCount || 6)) return { error: 'Eksik sayı' };
+
+  const hasWeek = numsAfterDate.length >= (LOTO_CONFIG.pickCount || 6) + (LOTO_CONFIG.bonusMax ? 2 : 1);
+  const week = hasWeek ? numsAfterDate[0] : undefined;
+  const start = hasWeek ? 1 : 0;
+  const count = LOTO_CONFIG.pickCount || 6;
+  const nums = numsAfterDate.slice(start, start + count).sort((a, b) => a - b);
+  const bonus = LOTO_CONFIG.bonusMax ? numsAfterDate[start + count] : undefined;
+
+  if (nums.length !== count) return { error: 'Eksik sayı' };
+  if (nums.some(n => n < 1 || n > LOTO_CONFIG.maxNum)) return { error: 'Sayı aralığı' };
+  if (new Set(nums).size !== count) return { error: 'Tekrarlı sayı' };
+  if (LOTO_CONFIG.bonusMax && (!Number.isInteger(bonus) || bonus < 1 || bonus > LOTO_CONFIG.bonusMax)) {
+    return { error: 'Bonus aralığı' };
+  }
+
+  return [week, date, nums, bonus];
+}
+
+function importDrawsFromText(text) {
+  const current = allDraws();
+  const existingDates = new Set(current.map(d => d[1]));
+  const parsedDates = new Set();
+  const additions = [];
+  let skipped = 0;
+  let invalid = 0;
+
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const parsed = parseImportLine(line);
+    if (!parsed) continue;
+    if (parsed.error) { invalid++; continue; }
+
+    const [, date, nums, bonus] = parsed;
+    if (existingDates.has(date) || parsedDates.has(date)) { skipped++; continue; }
+
+    const week = Number.isInteger(parsed[0]) && parsed[0] > 0
+      ? parsed[0]
+      : nextWeekForDate([...current, ...additions], date);
+    const draw = LOTO_CONFIG.bonusMax ? [week, date, nums, bonus] : [week, date, nums];
+    additions.push(draw);
+    parsedDates.add(date);
+  }
+
+  additions.sort((a, b) => drawDateKey(a) - drawDateKey(b));
+  userDraws = [...userDraws, ...additions];
+  saveUser();
+  render();
+
+  return { added: additions.length, skipped, invalid };
+}
+
+function importTxt() {
+  const input = document.getElementById('iImportTxt');
+  if (!input || !input.files || !input.files[0]) return showErr('TXT dosyası seçiniz.');
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = importDrawsFromText(reader.result || '');
+    const info = document.getElementById('importInfo');
+    const msg = `${result.added} kayıt eklendi · ${result.skipped} mevcut · ${result.invalid} hatalı`;
+    if (info) info.textContent = msg;
+    input.value = '';
+    toast(msg);
+  };
+  reader.onerror = () => showErr('TXT dosyası okunamadı.');
+  reader.readAsText(input.files[0], 'UTF-8');
 }
 
 function deleteDraw(hft, tarih) {

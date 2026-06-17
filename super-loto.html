@@ -52,6 +52,14 @@
   </div>
   <div class="err" id="fErr"></div>
   <div class="hint">Sayılar 1–60 arası, tekrarsız. Hafta no otomatik önerilir.</div>
+  <div class="import-box">
+    <div class="import-title">TXT ile toplu ekle</div>
+    <div class="import-row">
+      <input type="file" id="iImportTxt" accept=".txt,text/plain">
+      <button class="btn-sm" onclick="importTxt()">TXT Yükle</button>
+    </div>
+    <div class="hint" id="importInfo">Arşiv satırlarında tarih, hafta ve 6 sayı okunur.</div>
+  </div>
 </div>
 
 <!-- ANALİZ SEKMELERİ -->
