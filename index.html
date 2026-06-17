@@ -22,7 +22,8 @@
 
 <div class="land-hero">
   <h1>Türkiye Loto İstatistik Analizi</h1>
-  <p>Üç loto oyunu için geçmiş çekiliş sonuçlarını analiz edin, yeni çekilişler ekleyin ve istatistiksel kolon önerileri alın.</p>
+  <p>Dört loto oyunu için geçmiş çekiliş sonuçlarını analiz edin, yeni çekilişler ekleyin ve istatistiksel kolon önerileri alın.</p>
+  <div class="today-pill" id="todayPill">Bugün: —</div>
 </div>
 
 <div class="land-cards">
@@ -55,6 +56,12 @@
 <div class="land-foot">
   ⚠ Tüm loto çekilişleri bağımsız rastgele olaylardır. Bu site geçmiş istatistiklere dayalı analiz sunar; kazanç garantisi vermez.
 </div>
+<script>
+const trDays = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+const now = new Date();
+const todayText = now.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
+document.getElementById('todayPill').textContent = `Bugün: ${todayText} ${trDays[now.getDay()]}`;
+</script>
 </body>
 </html>
 
