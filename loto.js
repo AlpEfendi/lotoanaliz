@@ -620,6 +620,30 @@ function exportCSV() {
   a.click();
 }
 
+function dataFileMeta() {
+  if (LOTO_CONFIG.storageKey === 'slUserDraws') return { file: 'data-sayisal.js', variable: 'SAYISAL_DATA' };
+  if (LOTO_CONFIG.storageKey === 'superUserDraws') return { file: 'data-super.js', variable: 'SUPER_DATA' };
+  if (LOTO_CONFIG.storageKey === 'sansUserDraws') return { file: 'data-sans.js', variable: 'SANS_DATA' };
+  if (LOTO_CONFIG.storageKey === 'onNumaraUserDraws') return { file: 'data-onnumara.js', variable: 'ONNUMARA_DATA' };
+  return { file: LOTO_CONFIG.csvName.replace(/\.csv$/i, '.js'), variable: 'LOTO_DATA' };
+}
+
+function downloadTextFile(filename, text) {
+  const blob = new Blob([text], { type: 'text/javascript;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function downloadDataFile() {
+  const meta = dataFileMeta();
+  const rows = allDraws().map(draw => JSON.stringify(draw)).join(',\n');
+  downloadTextFile(meta.file, `var ${meta.variable} = [\n${rows}\n];\n`);
+  toast(`${meta.file} indirildi`);
+}
+
 let _activeTab = 'harita';
 function tab(id, btn) {
   document.getElementById('t-' + _activeTab).style.display = 'none';
