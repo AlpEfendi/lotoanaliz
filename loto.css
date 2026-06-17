@@ -96,6 +96,19 @@ body {
 }
 .stat-v { font-size: 1.3rem; font-weight: 700; }
 .stat-l { font-size: 0.72rem; color: var(--text3); margin-top: 2px; }
+.draw-status {
+  margin: -6px 0 16px;
+  padding: 11px 13px;
+  border: 1px solid var(--border2);
+  border-radius: var(--r-sm);
+  background: #2a3039;
+  color: var(--text2);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.draw-status.ok { border-color: rgba(52,220,151,.55); background: rgba(52,220,151,.12); }
+.draw-status.warn { border-color: rgba(255,209,90,.65); background: rgba(255,209,90,.13); }
+.draw-status.due { border-color: rgba(255,102,102,.68); background: rgba(255,102,102,.13); }
 
 /* ── Card ────────────────────────────────────────── */
 .card {
@@ -272,6 +285,19 @@ tr.newrow td { background: rgba(124,107,255,.04); }
 .land-hero { text-align: center; padding: 40px 14px 28px; max-width: 720px; margin: 0 auto; }
 .land-hero h1 { font-size: 2rem; font-weight: 800; letter-spacing: 0; color: #fff; margin-bottom: 12px; line-height: 1.15; }
 .land-hero p  { font-size: 0.95rem; color: var(--text3); line-height: 1.7; }
+.today-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 18px;
+  padding: 7px 13px;
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  background: #2a3039;
+  color: var(--text2);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
 .land-cards { display: grid; grid-template-columns: 1fr; gap: 14px; max-width: 960px; margin: 28px auto; padding: 0 14px; }
 @media (min-width: 600px) { .land-cards { grid-template-columns: repeat(3, 1fr); } }
 @media (min-width: 920px) { .land-cards { grid-template-columns: repeat(4, 1fr); max-width: 1180px; } }

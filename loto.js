@@ -19,6 +19,85 @@ function drawDateKey(draw) {
   const [day, month, year] = String(draw[1] || '').split('/').map(Number);
   return year * 10000 + month * 100 + day;
 }
+
+const TR_DAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+
+function drawToDate(draw) {
+  const [day, month, year] = String(draw[1] || '').split('/').map(Number);
+  if (!day || !month || !year) return null;
+  return new Date(year, month - 1, day);
+}
+
+function toDateOnly(date = new Date()) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function formatLongDate(date) {
+  return date.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
+}
+
+function formatShortDate(date) {
+  return date.toLocaleDateString('tr-TR');
+}
+
+function drawDayLabels(drawDays) {
+  return drawDays.map(day => TR_DAYS[day]).join(', ');
+}
+
+function countDueDrawDays(lastDate, today, drawDays) {
+  let count = 0;
+  for (let d = addDays(lastDate, 1); d <= today; d = addDays(d, 1)) {
+    if (drawDays.includes(d.getDay())) count++;
+  }
+  return count;
+}
+
+function nextDrawDate(today, drawDays) {
+  for (let i = 0; i <= 7; i++) {
+    const candidate = addDays(today, i);
+    if (drawDays.includes(candidate.getDay())) return candidate;
+  }
+  return null;
+}
+
+function renderDrawStatus(draws) {
+  const el = document.getElementById('drawStatus');
+  if (!el) return;
+  const drawDays = LOTO_CONFIG.drawDays || [];
+  const latest = draws[draws.length - 1];
+  const lastDate = latest ? drawToDate(latest) : null;
+  if (!latest || !lastDate || !drawDays.length) {
+    el.className = 'draw-status warn';
+    el.textContent = 'Güncellik kontrolü için yeterli çekiliş bilgisi yok.';
+    return;
+  }
+
+  const today = toDateOnly();
+  const due = countDueDrawDays(lastDate, today, drawDays);
+  const next = nextDrawDate(today, drawDays);
+  const todayIsDrawDay = drawDays.includes(today.getDay());
+  const dayInfo = `Çekiliş günleri: ${drawDayLabels(drawDays)}.`;
+  const dateInfo = `Bugün ${formatLongDate(today)} ${TR_DAYS[today.getDay()]}; son ekli sonuç ${latest[1]}.`;
+
+  if (due === 0) {
+    const nextInfo = next ? `Sıradaki çekiliş ${formatShortDate(next)} ${TR_DAYS[next.getDay()]}.` : '';
+    el.className = 'draw-status ok';
+    el.textContent = `${dateInfo} Veri güncel görünüyor. ${dayInfo} ${nextInfo}`.trim();
+    return;
+  }
+
+  const missingText = due === 1 ? '1 çekiliş sonucu' : `${due} çekiliş sonucu`;
+  const todayText = todayIsDrawDay ? ' Bugün de çekiliş günü olduğu için sonuç henüz yayınlanmadıysa beklemede olabilir.' : '';
+  el.className = due >= 2 ? 'draw-status due' : 'draw-status warn';
+  el.textContent = `${dateInfo} ${missingText} eksik olabilir. ${dayInfo}${todayText}`;
+}
+
 function allDraws() {
   const byDate = new Map();
   for (const draw of LOTO_CONFIG.data) byDate.set(draw[1], draw);
@@ -348,6 +427,7 @@ function render() {
   const allHfts = draws.map(d => d[0]);
   document.getElementById('iHft').value = (allHfts.length ? Math.max(...allHfts) : 0) + 1;
   document.getElementById('hBadge').textContent = `Son: ${draws[draws.length-1][1]}`;
+  renderDrawStatus(draws);
 
   // Harita
   const grid = document.getElementById('gGrid');

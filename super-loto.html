@@ -42,6 +42,8 @@
   <div class="stat"><div class="stat-v" style="color:var(--accent)" id="sGold">—</div><div class="stat-l">Altın ⭐</div></div>
 </div>
 
+<div class="draw-status" id="drawStatus">Güncellik kontrol ediliyor…</div>
+
 <!-- YENİ ÇEKİLİŞ -->
 <div class="card">
   <div class="card-title"><span class="ctag" style="background:var(--teal)"></span>Yeni çekiliş ekle</div>
@@ -150,6 +152,7 @@ const LOTO_CONFIG = {
   maxNum: 60,
   bonusMax: 0,
   pickCount: 6,
+  drawDays: [2,4,0],
   storageKey: 'superUserDraws',
   gameName: 'Süper Loto',
   sinceLabel: 'Ocak 2022→',
