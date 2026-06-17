@@ -38,6 +38,10 @@ function freq(draws) {
   return f;
 }
 
+function resultCount() {
+  return LOTO_CONFIG.drawCount || LOTO_CONFIG.pickCount || 6;
+}
+
 function freqBonus(draws) {
   const f = {};
   const bn = LOTO_CONFIG.bonusMax;
@@ -71,12 +75,13 @@ function analyzeTrends(draws, windowSize = 30) {
   const recent = draws.slice(-windowSize);
   const recentFreq = freq(recent);
   const denom = recent.length || 1;
+  const hotThreshold = (resultCount() / LOTO_CONFIG.maxNum) * 1.25;
   const trend = {};
   for (let i = 1; i <= LOTO_CONFIG.maxNum; i++) {
     trend[i] = {
       freq: recentFreq[i],
       pct: recentFreq[i] / denom,
-      isHot: recentFreq[i] / denom >= 0.15,
+      isHot: recentFreq[i] / denom >= hotThreshold,
       isCold: recentFreq[i] === 0
     };
   }
@@ -130,6 +135,7 @@ function drawsSinceSeen(draws, num) {
 
 function buildNumberScores(draws, profile = 'balanced') {
   const pickCount = LOTO_CONFIG.pickCount || 6;
+  const drawnCount = resultCount();
   const recentSize = Math.min(120, draws.length);
   const hotSize = Math.min(30, draws.length);
   const recentDraws = draws.slice(-recentSize);
@@ -137,9 +143,9 @@ function buildNumberScores(draws, profile = 'balanced') {
   const allFreq = freq(draws);
   const recentFreq = freq(recentDraws);
   const hotFreq = freq(hotDraws);
-  const expectedAll = Math.max(1, draws.length * pickCount / LOTO_CONFIG.maxNum);
-  const expectedRecent = Math.max(1, recentDraws.length * pickCount / LOTO_CONFIG.maxNum);
-  const expectedHot = Math.max(1, hotDraws.length * pickCount / LOTO_CONFIG.maxNum);
+  const expectedAll = Math.max(1, draws.length * drawnCount / LOTO_CONFIG.maxNum);
+  const expectedRecent = Math.max(1, recentDraws.length * drawnCount / LOTO_CONFIG.maxNum);
+  const expectedHot = Math.max(1, hotDraws.length * drawnCount / LOTO_CONFIG.maxNum);
   const maxGap = Math.max(1, draws.length);
 
   const weights = {
@@ -433,7 +439,7 @@ function addDraw() {
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) return showErr('Tarih: GG/AA/YYYY');
   if (allDraws().some(d => d[1] === date)) return showErr('Bu tarih zaten kayıtlı.');
   const parts = raw.split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
-  const cnt = LOTO_CONFIG.pickCount || 6;
+  const cnt = resultCount();
   if (parts.length !== cnt) return showErr(`Tam ${cnt} sayı giriniz.`);
   if (parts.some(n => n < 1 || n > LOTO_CONFIG.maxNum)) return showErr(`Sayılar 1-${LOTO_CONFIG.maxNum} arasında olmalı.`);
   if (new Set(parts).size !== cnt) return showErr('Tekrarsız sayılar giriniz.');
@@ -463,27 +469,45 @@ function nextWeekForDate(draws, date) {
 
 function normalizeImportDate(raw) {
   const txt = String(raw || '').trim().replace(/\./g, '/');
-  const m = txt.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const m = txt.replace(/-/g, '/').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return '';
   return `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')}/${m[3]}`;
 }
 
-function parseImportLine(line) {
+function importNumbersFromText(text) {
+  return (String(text).match(/\d+/g) || []).map(Number).filter(n => Number.isInteger(n));
+}
+
+function parseImportBlock(lines, index) {
+  const line = lines[index] || '';
   const clean = line.trim();
   if (!clean || /^\d{4}$/.test(clean) || clean.toLowerCase().startsWith('tarih')) return null;
 
-  const parts = clean.split(/[\s;\t,|-]+/).filter(Boolean);
-  const dateIdx = parts.findIndex(p => /^\d{1,2}[./]\d{1,2}[./]\d{4}$/.test(p));
-  if (dateIdx === -1) return null;
+  const dateMatch = clean.match(/\b\d{1,2}[./-]\d{1,2}[./-]\d{4}\b/);
+  if (!dateMatch) return null;
 
-  const date = normalizeImportDate(parts[dateIdx]);
-  const numsAfterDate = parts.slice(dateIdx + 1).map(Number).filter(n => Number.isInteger(n));
-  if (!date || numsAfterDate.length < (LOTO_CONFIG.pickCount || 6)) return { error: 'Eksik sayı' };
+  const date = normalizeImportDate(dateMatch[0]);
+  const numsAfterDate = importNumbersFromText(clean.slice(dateMatch.index + dateMatch[0].length));
+  let nextIndex = index;
+  const needed = resultCount() + (LOTO_CONFIG.bonusMax ? 1 : 0);
 
-  const hasWeek = numsAfterDate.length >= (LOTO_CONFIG.pickCount || 6) + (LOTO_CONFIG.bonusMax ? 2 : 1);
+  while (numsAfterDate.length < needed && nextIndex + 1 < lines.length) {
+    const nextLine = (lines[nextIndex + 1] || '').trim();
+    if (!nextLine || /^\d{4}$/.test(nextLine) || nextLine.toLowerCase().startsWith('tarih')) {
+      nextIndex++;
+      continue;
+    }
+    if (/\b\d{1,2}[./-]\d{1,2}[./-]\d{4}\b/.test(nextLine)) break;
+    numsAfterDate.push(...importNumbersFromText(nextLine));
+    nextIndex++;
+  }
+
+  if (!date || numsAfterDate.length < resultCount()) return { error: 'Eksik sayı' };
+
+  const hasWeek = numsAfterDate.length >= resultCount() + (LOTO_CONFIG.bonusMax ? 2 : 1);
   const week = hasWeek ? numsAfterDate[0] : undefined;
   const start = hasWeek ? 1 : 0;
-  const count = LOTO_CONFIG.pickCount || 6;
+  const count = resultCount();
   const nums = numsAfterDate.slice(start, start + count).sort((a, b) => a - b);
   const bonus = LOTO_CONFIG.bonusMax ? numsAfterDate[start + count] : undefined;
 
@@ -494,7 +518,12 @@ function parseImportLine(line) {
     return { error: 'Bonus aralığı' };
   }
 
-  return [week, date, nums, bonus];
+  return { parsed: [week, date, nums, bonus], nextIndex };
+}
+
+function parseImportLine(line) {
+  const result = parseImportBlock([line], 0);
+  return result && result.parsed ? result.parsed : result;
 }
 
 function importDrawsFromText(text) {
@@ -505,10 +534,13 @@ function importDrawsFromText(text) {
   let skipped = 0;
   let invalid = 0;
 
-  for (const line of String(text || '').split(/\r?\n/)) {
-    const parsed = parseImportLine(line);
-    if (!parsed) continue;
-    if (parsed.error) { invalid++; continue; }
+  const lines = String(text || '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const result = parseImportBlock(lines, i);
+    if (!result) continue;
+    if (result.error) { invalid++; continue; }
+    i = result.nextIndex;
+    const parsed = result.parsed;
 
     const [, date, nums, bonus] = parsed;
     if (existingDates.has(date) || parsedDates.has(date)) { skipped++; continue; }
@@ -578,7 +610,7 @@ function toast(msg) {
 }
 
 function exportCSV() {
-  const numberHeaders = Array.from({length: LOTO_CONFIG.pickCount || 6}, (_, i) => `S${i + 1}`);
+  const numberHeaders = Array.from({length: resultCount()}, (_, i) => `S${i + 1}`);
   const rows = [['Hafta','Tarih', ...numberHeaders, 'Bonus']];
   for (const [h, t, n, b] of allDraws()) rows.push([h, t, ...n, b||'']);
   const csv = rows.map(r => r.join(',')).join('\n');
