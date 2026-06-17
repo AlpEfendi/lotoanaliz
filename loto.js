@@ -15,7 +15,13 @@ function loadUserDraws() {
 
 let userDraws = loadUserDraws();
 function saveUser() { localStorage.setItem(LOTO_CONFIG.storageKey, JSON.stringify(userDraws)); }
-function allDraws() { return [...LOTO_CONFIG.data, ...userDraws]; }
+function drawDateKey(draw) {
+  const [day, month, year] = String(draw[1] || '').split('/').map(Number);
+  return year * 10000 + month * 100 + day;
+}
+function allDraws() {
+  return [...LOTO_CONFIG.data, ...userDraws].sort((a, b) => drawDateKey(a) - drawDateKey(b));
+}
 
 // ── Frekans ──────────────────────────────────────────
 function freq(draws) {
