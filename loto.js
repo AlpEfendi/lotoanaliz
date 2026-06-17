@@ -3,7 +3,17 @@
 //  LOTO_CONFIG ile parametrize
 // ════════════════════════════════════════════════════
 
-let userDraws = JSON.parse(localStorage.getItem(LOTO_CONFIG.storageKey) || '[]');
+function loadUserDraws() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LOTO_CONFIG.storageKey) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    localStorage.removeItem(LOTO_CONFIG.storageKey);
+    return [];
+  }
+}
+
+let userDraws = loadUserDraws();
 function saveUser() { localStorage.setItem(LOTO_CONFIG.storageKey, JSON.stringify(userDraws)); }
 function allDraws() { return [...LOTO_CONFIG.data, ...userDraws]; }
 
@@ -51,12 +61,13 @@ function colorClass(c, max) {
 function analyzeTrends(draws, windowSize = 30) {
   const recent = draws.slice(-windowSize);
   const recentFreq = freq(recent);
+  const denom = recent.length || 1;
   const trend = {};
   for (let i = 1; i <= LOTO_CONFIG.maxNum; i++) {
     trend[i] = {
       freq: recentFreq[i],
-      pct: recentFreq[i] / windowSize,
-      isHot: recentFreq[i] / windowSize >= 0.15,
+      pct: recentFreq[i] / denom,
+      isHot: recentFreq[i] / denom >= 0.15,
       isCold: recentFreq[i] === 0
     };
   }
@@ -67,10 +78,11 @@ function analyzeTrends(draws, windowSize = 30) {
 function goldNumbers(draws) {
   const gold = LOTO_CONFIG.goldNumbers;
   const f = freq(draws);
+  const total = draws.length || 1;
   return gold.map(n => ({
     num: n,
     freq: f[n] || 0,
-    pct: f[n] / draws.length,
+    pct: (f[n] || 0) / total,
     trend: f[n] > 0 ? 'aktif' : 'gecikme'
   })).sort((a, b) => b.freq - a.freq);
 }
@@ -113,6 +125,13 @@ function ballsHtml(nums, bonusNum) {
   return h;
 }
 
+function pickFromTop(sorted, fallbackMax, topCount, offset = 0) {
+  const pool = sorted.slice(offset, offset + topCount).map(([n]) => n);
+  const fallback = Array.from({length: fallbackMax}, (_, i) => i + 1);
+  const source = pool.length ? pool : fallback;
+  return source[Math.floor(Math.random() * source.length)];
+}
+
 // ── Render Öneri ─────────────────────────────────────
 function renderOneri(f, sorted, miss20) {
   const trends = analyzeTrends(allDraws(), 30);
@@ -146,8 +165,8 @@ function renderOneri(f, sorted, miss20) {
     const bDraws = allDraws();
     const bf = freqBonus(bDraws);
     const bSorted = Object.entries(bf).map(([k,v])=>[+k,v]).sort((a,b)=>b[1]-a[1]);
-    const b1 = bSorted[Math.floor(Math.random() * 5)][0];
-    const b2 = bSorted[Math.floor(Math.random() * 7) + 2][0];
+    const b1 = pickFromTop(bSorted, LOTO_CONFIG.bonusMax, 5);
+    const b2 = pickFromTop(bSorted, LOTO_CONFIG.bonusMax, 7, 2);
     bonusHtml1 = `<div class="bonus-hint">🎯 Şans Topu önerisi: <span style="color:#ff6060;font-weight:700">${b1}</span></div>`;
     bonusHtml2 = `<div class="bonus-hint">🎯 Şans Topu önerisi: <span style="color:#ff6060;font-weight:700">${b2}</span></div>`;
   }
@@ -187,7 +206,7 @@ function render() {
   document.getElementById('sGold').textContent = LOTO_CONFIG.goldNumbers.length;
   document.getElementById('hSub').textContent = `${draws.length} çekiliş · 1-${LOTO_CONFIG.maxNum} ${LOTO_CONFIG.gameName} · ${LOTO_CONFIG.sinceLabel}`;
   const allHfts = draws.map(d => d[0]);
-  document.getElementById('iHft').value = Math.max(...allHfts) + 1;
+  document.getElementById('iHft').value = (allHfts.length ? Math.max(...allHfts) : 0) + 1;
   document.getElementById('hBadge').textContent = `Son: ${draws[draws.length-1][1]}`;
 
   // Harita
@@ -285,7 +304,8 @@ function addDraw() {
   if (new Set(parts).size !== cnt) return showErr('Tekrarsız sayılar giriniz.');
 
   let bonus = undefined;
-  if (LOTO_CONFIG.bonusMax && bonusRaw) {
+  if (LOTO_CONFIG.bonusMax) {
+    if (!bonusRaw) return showErr(`Şans Topu 1-${LOTO_CONFIG.bonusMax} arası girilmeli.`);
     bonus = parseInt(bonusRaw);
     if (isNaN(bonus) || bonus < 1 || bonus > LOTO_CONFIG.bonusMax) return showErr(`Şans Topu 1-${LOTO_CONFIG.bonusMax} arası.`);
   }
@@ -331,7 +351,8 @@ function toast(msg) {
 }
 
 function exportCSV() {
-  const rows = [['Hafta','Tarih','S1','S2','S3','S4','S5','S6','Bonus']];
+  const numberHeaders = Array.from({length: LOTO_CONFIG.pickCount || 6}, (_, i) => `S${i + 1}`);
+  const rows = [['Hafta','Tarih', ...numberHeaders, 'Bonus']];
   for (const [h, t, n, b] of allDraws()) rows.push([h, t, ...n, b||'']);
   const csv = rows.map(r => r.join(',')).join('\n');
   const a = document.createElement('a');
