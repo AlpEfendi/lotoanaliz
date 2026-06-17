@@ -1,0 +1,42 @@
+name: Update loto results
+
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Guncellenecek oyun"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - sayisal
+          - super
+          - sans
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Fetch latest results
+        env:
+          COLLECTAPI_KEY: ${{ secrets.COLLECTAPI_KEY }}
+        run: node scripts/update-loto-results.js --game=${{ inputs.game }}
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update loto results"
+          file_pattern: "data-*.js loto/data-*.js"
