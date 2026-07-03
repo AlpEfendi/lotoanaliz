@@ -15,6 +15,42 @@ function loadUserDraws() {
 
 let userDraws = loadUserDraws();
 function saveUser() { localStorage.setItem(LOTO_CONFIG.storageKey, JSON.stringify(userDraws)); }
+let cloudDraws = [];
+let cloudClient = null;
+let cloudSession = null;
+
+function gameId() {
+  if (LOTO_CONFIG.storageKey === 'slUserDraws') return 'sayisal';
+  if (LOTO_CONFIG.storageKey === 'superUserDraws') return 'super';
+  if (LOTO_CONFIG.storageKey === 'sansUserDraws') return 'sans';
+  return 'onnumara';
+}
+
+function isoToDisplayDate(value) {
+  const [year, month, day] = String(value || '').split('-');
+  return year && month && day ? `${day}/${month}/${year}` : '';
+}
+
+function displayToIsoDate(value) {
+  const [day, month, year] = String(value || '').split('/');
+  return year && month && day ? `${year}-${month}-${day}` : '';
+}
+
+function rowToDraw(row) {
+  const draw = [row.week_no, isoToDisplayDate(row.draw_date), row.numbers.map(Number)];
+  if (row.bonus !== null && row.bonus !== undefined) draw.push(Number(row.bonus));
+  return draw;
+}
+
+function drawToRow(draw) {
+  return {
+    game: gameId(),
+    draw_date: displayToIsoDate(draw[1]),
+    week_no: Number(draw[0]),
+    numbers: draw[2].map(Number),
+    bonus: draw[3] === undefined ? null : Number(draw[3])
+  };
+}
 function drawDateKey(draw) {
   const [day, month, year] = String(draw[1] || '').split('/').map(Number);
   return year * 10000 + month * 100 + day;
@@ -102,6 +138,7 @@ function allDraws() {
   const byDate = new Map();
   for (const draw of LOTO_CONFIG.data) byDate.set(draw[1], draw);
   for (const draw of userDraws) byDate.set(draw[1], draw);
+  for (const draw of cloudDraws) byDate.set(draw[1], draw);
   return [...byDate.values()].sort((a, b) => drawDateKey(a) - drawDateKey(b));
 }
 
@@ -492,7 +529,7 @@ function render() {
   // Çekiliş tablosu
   const cols2 = ['#2ecc8a','#1dc7bb','#8888b0','#f09030','#e85555','#7c6bff'];
   const tb = document.getElementById('tBody');
-  const userKeys = new Set(userDraws.map(d => `${d[0]}_${d[1]}`));
+  const userKeys = new Set([...userDraws, ...(cloudSession ? cloudDraws : [])].map(d => `${d[0]}_${d[1]}`));
   tb.innerHTML = [...draws].reverse().slice(0, 80).map(([hft, tarih, nums, bonus]) => {
     const isNew = userKeys.has(`${hft}_${tarih}`);
     const balls = nums.map((n, i) =>
@@ -507,7 +544,7 @@ function render() {
 }
 
 // ── Form ─────────────────────────────────────────────
-function addDraw() {
+async function addDraw() {
   const errEl = document.getElementById('fErr');
   errEl.style.display = 'none';
   const hft = parseInt(document.getElementById('iHft').value);
@@ -531,13 +568,16 @@ function addDraw() {
     if (isNaN(bonus) || bonus < 1 || bonus > LOTO_CONFIG.bonusMax) return showErr(`Şans Topu 1-${LOTO_CONFIG.bonusMax} arası.`);
   }
 
-  userDraws.push([hft, date, parts.sort((a, b) => a - b), bonus]);
-  saveUser();
+  if (!cloudSession) return showErr('Sonuç eklemek için yönetici girişi yapınız.');
+  const draw = [hft, date, parts.sort((a, b) => a - b), bonus];
+  const { error } = await cloudClient.from('loto_draws').upsert(drawToRow(draw), { onConflict: 'game,draw_date' });
+  if (error) return showErr(`Buluta kaydedilemedi: ${error.message}`);
+  cloudDraws.push(draw);
   render();
   document.getElementById('iNums').value = '';
   document.getElementById('iDate').value = '';
   if (document.getElementById('iBonus')) document.getElementById('iBonus').value = '';
-  toast('✓ Çekiliş eklendi');
+  toast('Çekiliş tüm cihazlara eklendi');
 }
 
 function nextWeekForDate(draws, date) {
@@ -606,7 +646,7 @@ function parseImportLine(line) {
   return result && result.parsed ? result.parsed : result;
 }
 
-function importDrawsFromText(text) {
+async function importDrawsFromText(text) {
   const current = allDraws();
   const existingDates = new Set(current.map(d => d[1]));
   const parsedDates = new Set();
@@ -634,8 +674,12 @@ function importDrawsFromText(text) {
   }
 
   additions.sort((a, b) => drawDateKey(a) - drawDateKey(b));
-  userDraws = [...userDraws, ...additions];
-  saveUser();
+  if (!cloudSession) return { added: 0, skipped, invalid, error: 'Yönetici girişi gerekli.' };
+  if (additions.length) {
+    const { error } = await cloudClient.from('loto_draws').upsert(additions.map(drawToRow), { onConflict: 'game,draw_date' });
+    if (error) return { added: 0, skipped, invalid, error: error.message };
+    cloudDraws = [...cloudDraws, ...additions];
+  }
   render();
 
   return { added: additions.length, skipped, invalid };
@@ -646,10 +690,10 @@ function importTxt() {
   if (!input || !input.files || !input.files[0]) return showErr('TXT dosyası seçiniz.');
 
   const reader = new FileReader();
-  reader.onload = () => {
-    const result = importDrawsFromText(reader.result || '');
+  reader.onload = async () => {
+    const result = await importDrawsFromText(reader.result || '');
     const info = document.getElementById('importInfo');
-    const msg = `${result.added} kayıt eklendi · ${result.skipped} mevcut · ${result.invalid} hatalı`;
+    const msg = result.error || `${result.added} kayıt eklendi · ${result.skipped} mevcut · ${result.invalid} hatalı`;
     if (info) info.textContent = msg;
     input.value = '';
     toast(msg);
@@ -658,8 +702,13 @@ function importTxt() {
   reader.readAsText(input.files[0], 'UTF-8');
 }
 
-function deleteDraw(hft, tarih) {
-  userDraws = userDraws.filter(d => !(d[0] === hft && d[1] === tarih));
+async function deleteDraw(hft, tarih) {
+  if (!cloudSession) return showErr('Sonuç silmek için yönetici girişi yapınız.');
+  const { error } = await cloudClient.from('loto_draws')
+    .delete().eq('game', gameId()).eq('draw_date', displayToIsoDate(tarih));
+  if (error) return showErr(`Silinemedi: ${error.message}`);
+  cloudDraws = cloudDraws.filter(d => d[1] !== tarih);
+  userDraws = userDraws.filter(d => d[1] !== tarih);
   saveUser();
   render();
   toast('Silindi');
@@ -733,8 +782,75 @@ function tab(id, btn) {
   btn.classList.add('on');
 }
 
+function renderCloudPanel() {
+  let panel = document.getElementById('cloudPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'cloudPanel';
+    panel.className = 'cloud-panel';
+    document.getElementById('drawStatus')?.insertAdjacentElement('afterend', panel);
+  }
+  if (cloudSession) {
+    panel.innerHTML = `<div><strong>Bulut senkronizasyonu açık</strong><span>${cloudSession.user.email}</span></div>
+      <div class="cloud-actions"><button class="btn-sm" onclick="syncArchiveToCloud()">Mevcut arşivi buluta aktar</button><button class="btn-sm" onclick="cloudLogout()">Çıkış</button></div>`;
+  } else {
+    panel.innerHTML = `<div><strong>Yönetici girişi</strong><span>Sonuç eklemek ve TXT yüklemek için giriş yapın.</span></div>
+      <div class="cloud-login"><input id="cloudEmail" type="email" placeholder="E-posta"><input id="cloudPassword" type="password" placeholder="Şifre"><button class="btn-sm" onclick="cloudLogin()">Giriş</button></div>`;
+  }
+}
+
+async function loadCloudDraws() {
+  if (!cloudClient) return;
+  const { data, error } = await cloudClient.from('loto_draws').select('week_no,draw_date,numbers,bonus').eq('game', gameId()).order('draw_date');
+  if (error) {
+    toast(`Bulut bağlantısı kurulamadı: ${error.message}`);
+    return;
+  }
+  cloudDraws = (data || []).map(rowToDraw);
+}
+
+async function cloudLogin() {
+  const email = document.getElementById('cloudEmail')?.value.trim();
+  const password = document.getElementById('cloudPassword')?.value;
+  const { data, error } = await cloudClient.auth.signInWithPassword({ email, password });
+  if (error) return showErr(`Giriş başarısız: ${error.message}`);
+  cloudSession = data.session;
+  renderCloudPanel();
+  toast('Yönetici girişi başarılı');
+}
+
+async function cloudLogout() {
+  await cloudClient.auth.signOut();
+  cloudSession = null;
+  renderCloudPanel();
+  toast('Çıkış yapıldı');
+}
+
+async function syncArchiveToCloud() {
+  if (!cloudSession) return showErr('Yönetici girişi gerekli.');
+  const rows = allDraws().map(drawToRow);
+  for (let i = 0; i < rows.length; i += 400) {
+    const { error } = await cloudClient.from('loto_draws').upsert(rows.slice(i, i + 400), { onConflict: 'game,draw_date' });
+    if (error) return showErr(`Aktarım durdu: ${error.message}`);
+  }
+  await loadCloudDraws();
+  render();
+  toast(`${rows.length} sonuç bulutla eşitlendi`);
+}
+
+async function initCloud() {
+  const cfg = window.SUPABASE_CONFIG;
+  if (cfg && window.supabase) {
+    cloudClient = window.supabase.createClient(cfg.url, cfg.publishableKey);
+    const { data } = await cloudClient.auth.getSession();
+    cloudSession = data.session;
+    await loadCloudDraws();
+  }
+  renderCloudPanel();
+}
+
 // Auto-format tarih
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const di = document.getElementById('iDate');
   if (di) di.addEventListener('input', function() {
     let v = this.value.replace(/\D/g,'');
@@ -744,5 +860,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   const ni = document.getElementById('iNums');
   if (ni) ni.addEventListener('keydown', e => { if(e.key==='Enter') addDraw(); });
+  await initCloud();
   render();
 });
