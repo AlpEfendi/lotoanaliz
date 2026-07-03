@@ -801,12 +801,27 @@ function renderCloudPanel() {
 
 async function loadCloudDraws() {
   if (!cloudClient) return;
-  const { data, error } = await cloudClient.from('loto_draws').select('week_no,draw_date,numbers,bonus').eq('game', gameId()).order('draw_date');
-  if (error) {
-    toast(`Bulut bağlantısı kurulamadı: ${error.message}`);
-    return;
+  const pageSize = 1000;
+  const rows = [];
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await cloudClient
+      .from('loto_draws')
+      .select('week_no,draw_date,numbers,bonus')
+      .eq('game', gameId())
+      .order('draw_date', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      toast(`Bulut bağlantısı kurulamadı: ${error.message}`);
+      return;
+    }
+
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
   }
-  cloudDraws = (data || []).map(rowToDraw);
+
+  cloudDraws = rows.map(rowToDraw);
 }
 
 async function cloudLogin() {
