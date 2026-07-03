@@ -27,6 +27,28 @@
   --r: 8px; --r-sm: 7px;
 }
 
+:root[data-theme="light"] {
+  --bg: #f2f5f8;
+  --bg2: #e8edf2;
+  --bg3: #dce3ea;
+  --bg4: #ced8e2;
+  --panel: #ffffff;
+  --border: rgba(29,43,57,.16);
+  --border2: rgba(29,43,57,.3);
+  --text: #17212b;
+  --text2: #243342;
+  --text3: #435466;
+  --muted: #637487;
+  --accent: #6657df;
+  --teal: #087f78;
+  --green: #087d4f;
+  --gold: #9b6900;
+  --orange: #a85100;
+  --red: #bd3030;
+  --pink: #a9276d;
+  --shadow: 0 10px 25px rgba(29,43,57,.1);
+}
+
 /* ── Base ─────────────────────────────────────────── */
 html { font-size: 17px; }
 body {
@@ -40,6 +62,7 @@ body {
   -webkit-text-size-adjust: 100%;
   overflow-x: hidden;
 }
+:root[data-theme="light"] body { background:linear-gradient(180deg,#e8edf2 0%,var(--bg) 38%,#f7f9fb 100%); }
 .wrap {
   width: min(100%, 1220px);
   margin: 0 auto;
@@ -81,6 +104,30 @@ body {
 .navbar a.navlink.active.sup { border-color: var(--gold); color: var(--gold); }
 .navbar a.navlink.active.st  { border-color: var(--pink); color: var(--pink); }
 .navbar a.navlink.active.on  { border-color: #28a9e0; color: #28a9e0; }
+.theme-toggle { order:0; min-width:52px; padding:6px 9px; border:1px solid var(--border2); border-radius:var(--r-sm); background:var(--bg3); color:var(--text2); font:inherit; font-size:.72rem; font-weight:700; cursor:pointer; }
+.theme-toggle:hover { border-color:var(--accent); color:var(--text); }
+
+:root[data-theme="light"] .navwrap { background:rgba(255,255,255,.94); }
+:root[data-theme="light"] .nav-logo,
+:root[data-theme="light"] .navbar a.navlink:hover,
+:root[data-theme="light"] .navbar a.navlink.active { color:var(--text); }
+:root[data-theme="light"] .stat { background:linear-gradient(180deg,#fff,var(--bg2)); }
+:root[data-theme="light"] .draw-status,
+:root[data-theme="light"] .cloud-panel,
+:root[data-theme="light"] .today-pill { background:#fff; }
+:root[data-theme="light"] .card { background:linear-gradient(180deg,#fff,#f5f7fa); }
+:root[data-theme="light"] .fld input,
+:root[data-theme="light"] .import-row input[type="file"] { background:#fff; }
+:root[data-theme="light"] .ri,
+:root[data-theme="light"] .oneri-card { background:#edf2f6; border-color:var(--border); }
+:root[data-theme="light"] .land-hero h1 { color:var(--text); }
+:root[data-theme="light"] .land-card { background:linear-gradient(180deg,#fff,#edf2f6); }
+:root[data-theme="light"] .land-card .lc-meta,
+:root[data-theme="light"] .land-foot { color:var(--muted); }
+:root[data-theme="light"] .c5 .gn,:root[data-theme="light"] .c5 .gv { color:#087d4f; }
+:root[data-theme="light"] .c4 .gn,:root[data-theme="light"] .c4 .gv { color:#087f78; }
+:root[data-theme="light"] .c2 .gn,:root[data-theme="light"] .c2 .gv { color:#9a4700; }
+:root[data-theme="light"] .c1 .gn,:root[data-theme="light"] .c1 .gv { color:#a12626; }
 
 /* wrap defined above */
 
