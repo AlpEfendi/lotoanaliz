@@ -2,12 +2,20 @@
   const storageKey = 'lotoTheme';
   const saved = localStorage.getItem(storageKey);
   const preferred = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  document.documentElement.dataset.theme = saved || preferred;
+  function applyTheme(theme) {
+    const isLight = theme === 'light';
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.classList.toggle('theme-light', isLight);
+    document.documentElement.classList.toggle('theme-dark', !isLight);
+    document.documentElement.style.colorScheme = theme;
+  }
+
+  applyTheme(saved || preferred);
 
   function updateButton(button) {
     const isLight = document.documentElement.dataset.theme === 'light';
-    button.textContent = isLight ? 'Koyu' : 'Açık';
-    button.title = isLight ? 'Koyu temaya geç' : 'Açık temaya geç';
+    button.textContent = isLight ? '☀️' : '🌙';
+    button.title = isLight ? 'Açık tema etkin, koyu temaya geç' : 'Koyu tema etkin, açık temaya geç';
     button.setAttribute('aria-label', button.title);
     button.setAttribute('aria-pressed', String(isLight));
   }
@@ -21,10 +29,10 @@
     updateButton(button);
     button.addEventListener('click', function () {
       const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
-      document.documentElement.dataset.theme = next;
+      applyTheme(next);
       localStorage.setItem(storageKey, next);
       updateButton(button);
     });
-    navbar.querySelector('.nav-logo')?.insertAdjacentElement('afterend', button);
+    navbar.appendChild(button);
   });
 })();
