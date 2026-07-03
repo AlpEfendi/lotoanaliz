@@ -179,7 +179,7 @@ body {
 .draw-status.warn { border-color: rgba(255,209,90,.65); background: rgba(255,209,90,.13); }
 .draw-status.due { border-color: rgba(255,102,102,.68); background: rgba(255,102,102,.13); }
 .cloud-panel { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 12px; padding:10px 12px; border:1px solid var(--border2); border-radius:var(--r-sm); background:#252a32; }
-.cloud-panel > div:first-child { display:flex; flex-direction:column; gap:2px; }
+.cloud-panel > div:first-child { display:flex; flex-direction:column; gap:0; }
 .cloud-panel strong { color:var(--text2); font-size:.86rem; }
 .cloud-panel span { color:var(--text3); font-size:.74rem; }
 .cloud-login,.cloud-actions { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }

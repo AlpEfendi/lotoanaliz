@@ -791,10 +791,10 @@ function renderCloudPanel() {
     document.getElementById('drawStatus')?.insertAdjacentElement('afterend', panel);
   }
   if (cloudSession) {
-    panel.innerHTML = `<div><strong>Bulut senkronizasyonu açık</strong>&nbsp;<span>${cloudSession.user.email}</span></div>
+    panel.innerHTML = `<div><strong>Bulut senkronizasyonu açık</strong><span>${cloudSession.user.email}</span></div>
       <div class="cloud-actions"><button class="btn-sm" onclick="syncArchiveToCloud()">Mevcut arşivi buluta aktar</button><button class="btn-sm" onclick="cloudLogout()">Çıkış</button></div>`;
   } else {
-    panel.innerHTML = `<div><strong>[Yönetici Girişi]</strong>&nbsp;<span>Sonuç eklemek ve TXT yüklemek için giriş yapın.</span></div>
+    panel.innerHTML = `<div><strong>[Yönetici Girişi]</strong><span>Sonuç eklemek ve TXT yüklemek için giriş yapın.</span></div>
       <div class="cloud-login"><input id="cloudEmail" type="email" placeholder="E-posta"><input id="cloudPassword" type="password" placeholder="Şifre"><button class="btn-sm" onclick="cloudLogin()">Giriş</button></div>`;
   }
 }
@@ -843,7 +843,13 @@ async function cloudLogout() {
 
 async function syncArchiveToCloud() {
   if (!cloudSession) return showErr('Yönetici girişi gerekli.');
-  const rows = allDraws().map(drawToRow);
+  const byDate = new Map();
+  for (const draw of cloudDraws) byDate.set(draw[1], draw);
+  for (const draw of LOTO_CONFIG.data) byDate.set(draw[1], draw);
+  for (const draw of userDraws) byDate.set(draw[1], draw);
+  const rows = [...byDate.values()]
+    .sort((a, b) => drawDateKey(a) - drawDateKey(b))
+    .map(drawToRow);
   for (let i = 0; i < rows.length; i += 400) {
     const { error } = await cloudClient.from('loto_draws').upsert(rows.slice(i, i + 400), { onConflict: 'game,draw_date' });
     if (error) return showErr(`Aktarım durdu: ${error.message}`);
