@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#15171a">
 <title>Loto Analiz — Ana Sayfa</title>
 <link rel="icon" href="favicon.svg?v=20260717" type="image/svg+xml">
-<link rel="stylesheet" href="loto.css?v=20260717">
+<link rel="stylesheet" href="loto.css?v=20260717c">
 <script src="theme.js?v=20260717"></script>
 </head>
 <body>
@@ -15,16 +15,19 @@
 <header class="navwrap">
   <nav class="navbar" aria-label="Ana menü">
     <a class="nav-logo" href="index.html" aria-label="Loto Analiz ana sayfa">🎰 Loto Analiz</a>
-    <a class="navlink active" href="index.html" aria-current="page">Ana Sayfa</a>
-    <a class="navlink sl" href="sayisal-loto.html">Sayısal Loto</a>
-    <a class="navlink sup" href="super-loto.html">Süper Loto</a>
-    <a class="navlink st" href="sans-topu.html">Şans Topu</a>
-    <a class="navlink on" href="on-numara.html">On Numara</a>
+    <div class="nav-links">
+      <a class="navlink active" href="index.html" aria-current="page">Ana Sayfa</a>
+      <a class="navlink sl" href="sayisal-loto.html">Sayısal Loto</a>
+      <a class="navlink sup" href="super-loto.html">Süper Loto</a>
+      <a class="navlink st" href="sans-topu.html">Şans Topu</a>
+      <a class="navlink on" href="on-numara.html">On Numara</a>
+    </div>
   </nav>
 </header>
 
 <main id="main-content" tabindex="-1">
 <div class="land-hero">
+  <p class="land-kicker">Dört oyun · tek doğrulanmış arşiv</p>
   <h1>Türkiye Loto İstatistik Analizi</h1>
   <p>Dört loto oyunu için geçmiş çekiliş sonuçlarını analiz edin, yeni çekilişler ekleyin ve istatistiksel kolon önerileri alın.</p>
   <div class="today-pill" id="todayPill" role="status" aria-live="polite">Bugün: —</div>

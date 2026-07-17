@@ -8,7 +8,7 @@
 <title>Çılgın Sayısal Loto Analiz</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="icon" href="favicon.svg?v=20260717" type="image/svg+xml">
-<link rel="stylesheet" href="loto.css?v=20260717">
+<link rel="stylesheet" href="loto.css?v=20260717c">
 <script src="theme.js?v=20260717"></script>
 </head>
 <body>
@@ -16,11 +16,13 @@
 <header class="navwrap">
   <nav class="navbar" aria-label="Ana menü">
     <a class="nav-logo" href="index.html" aria-label="Loto Analiz ana sayfa">🎰 Loto Analiz</a>
-    <a class="navlink " href="index.html">Ana Sayfa</a>
-    <a class="navlink sl active" href="sayisal-loto.html" aria-current="page">Sayısal Loto</a>
-    <a class="navlink sup " href="super-loto.html">Süper Loto</a>
-    <a class="navlink st " href="sans-topu.html">Şans Topu</a>
-    <a class="navlink on " href="on-numara.html">On Numara</a>
+    <div class="nav-links">
+      <a class="navlink " href="index.html">Ana Sayfa</a>
+      <a class="navlink sl active" href="sayisal-loto.html" aria-current="page">Sayısal Loto</a>
+      <a class="navlink sup " href="super-loto.html">Süper Loto</a>
+      <a class="navlink st " href="sans-topu.html">Şans Topu</a>
+      <a class="navlink on " href="on-numara.html">On Numara</a>
+    </div>
   </nav>
 </header>
 <main id="main-content" class="wrap" tabindex="-1">
@@ -49,6 +51,10 @@
 
 <div class="draw-status" id="drawStatus" role="status" aria-live="polite">Güncellik kontrol ediliyor…</div>
 
+<details class="archive-tools">
+  <summary><span class="archive-tools-title"><strong>Arşiv yönetimi</strong><small>Yönetici girişi, yeni sonuç ve toplu veri işlemleri</small></span></summary>
+  <div class="archive-tools-body">
+    <div id="cloudPanelHost"></div>
 <!-- YENİ ÇEKİLİŞ -->
 <div class="card">
   <h2 class="card-title"><span class="ctag" style="background:var(--teal)"></span>Yeni çekiliş ekle</h2>
@@ -71,6 +77,8 @@
     <div class="hint" id="importInfo" role="status" aria-live="polite">Arşiv satırlarında tarih, hafta ve ilk 6 sayı okunur.</div>
   </div>
 </div>
+  </div>
+</details>
 
 <!-- ANALİZ SEKMELERİ -->
 <div class="card" style="padding-bottom:12px">
@@ -170,7 +178,7 @@ const LOTO_CONFIG = {
   data: SAYISAL_DATA,
 };
 </script>
-<script src="loto.js?v=20260717b"></script>
+<script src="loto.js?v=20260717c"></script>
 </body>
 </html>
 

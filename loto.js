@@ -1470,7 +1470,9 @@ function renderCloudPanel() {
     panel.className = 'cloud-panel';
     panel.setAttribute('role', 'region');
     panel.setAttribute('aria-label', 'Bulut bağlantısı');
-    document.getElementById('drawStatus')?.insertAdjacentElement('afterend', panel);
+    const host = document.getElementById('cloudPanelHost');
+    if (host) host.appendChild(panel);
+    else document.getElementById('drawStatus')?.insertAdjacentElement('afterend', panel);
   }
   panel.replaceChildren();
 
