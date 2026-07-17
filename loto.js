@@ -753,14 +753,26 @@ function renderOneri(draws = analysisDraws()) {
 
   grid.innerHTML = `
     <div class="oneri-card">
-      <h3>Kolon 1 — Dengeli İstatistik</h3>
-      <p>Genel frekans, yakın dönem trendi, gecikme ve sayı dağılımı birlikte skorlanır. Skor: ${scorePct1}</p>
+      <div class="oneri-card-head">
+        <div>
+          <span class="oneri-eyebrow">Kolon 01</span>
+          <h3>Dengeli istatistik</h3>
+        </div>
+        <span class="oneri-score" aria-label="İstatistik skoru ${scorePct1}">Skor <strong>${scorePct1}</strong></span>
+      </div>
+      <p>Genel frekans, yakın dönem trendi, gecikme ve sayı dağılımı birlikte skorlanır.</p>
       <div class="balls">${ballsHtml(final1)}</div>
       ${bonusHtml1}
     </div>
     <div class="oneri-card">
-      <h3>Kolon 2 — Trend + Gecikme</h3>
-      <p>Son dönem hareketi ve gecikmiş sayı baskısı daha yüksek ağırlıkla hesaplanır. Skor: ${scorePct2}</p>
+      <div class="oneri-card-head">
+        <div>
+          <span class="oneri-eyebrow">Kolon 02</span>
+          <h3>Trend + gecikme</h3>
+        </div>
+        <span class="oneri-score" aria-label="İstatistik skoru ${scorePct2}">Skor <strong>${scorePct2}</strong></span>
+      </div>
+      <p>Son dönem hareketi ve gecikmiş sayı baskısı daha yüksek ağırlıkla hesaplanır.</p>
       <div class="balls">${ballsHtml(final2)}</div>
       ${bonusHtml2}
     </div>`;
