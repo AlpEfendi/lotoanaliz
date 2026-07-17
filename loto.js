@@ -569,15 +569,15 @@ function avg(arr) {
   return arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : 0;
 }
 
-function drawsSinceSeen(draws, num) {
-  for (let i = draws.length - 1, gap = 0; i >= 0; i--, gap++) {
-    if (draws[i][2].includes(num)) return gap;
-  }
-  return draws.length;
+function smoothedRelativeFrequency(observed, sampleSize, expectedProbability, priorDraws) {
+  if (!(expectedProbability > 0)) return 1;
+  const posteriorProbability =
+    (observed + expectedProbability * priorDraws) /
+    (sampleSize + priorDraws);
+  return posteriorProbability / expectedProbability;
 }
 
 function buildNumberScores(draws, profile = 'balanced') {
-  const pickCount = LOTO_CONFIG.pickCount || 6;
   const drawnCount = resultCount();
   const recentSize = Math.min(120, draws.length);
   const hotSize = Math.min(30, draws.length);
@@ -586,29 +586,22 @@ function buildNumberScores(draws, profile = 'balanced') {
   const allFreq = freq(draws);
   const recentFreq = freq(recentDraws);
   const hotFreq = freq(hotDraws);
-  const expectedAll = Math.max(1, draws.length * drawnCount / LOTO_CONFIG.maxNum);
-  const expectedRecent = Math.max(1, recentDraws.length * drawnCount / LOTO_CONFIG.maxNum);
-  const expectedHot = Math.max(1, hotDraws.length * drawnCount / LOTO_CONFIG.maxNum);
-  const maxGap = Math.max(1, draws.length);
+  const expectedProbability = drawnCount / LOTO_CONFIG.maxNum;
 
   const weights = {
-    balanced: { all: 0.34, recent: 0.28, hot: 0.16, overdue: 0.22 },
-    trend: { all: 0.22, recent: 0.38, hot: 0.28, overdue: 0.12 },
-    overdue: { all: 0.24, recent: 0.16, hot: 0.10, overdue: 0.50 },
-  }[profile] || { all: 0.34, recent: 0.28, hot: 0.16, overdue: 0.22 };
+    balanced: { all: 0.64, recent: 0.25, hot: 0.11 },
+    trend: { all: 0.30, recent: 0.44, hot: 0.26 }
+  }[profile] || { all: 0.64, recent: 0.25, hot: 0.11 };
 
   const scores = {};
   for (let n = 1; n <= LOTO_CONFIG.maxNum; n++) {
-    const allRatio = clamp(allFreq[n] / expectedAll, 0.35, 1.75);
-    const recentRatio = clamp(recentFreq[n] / expectedRecent, 0.25, 2.10);
-    const hotRatio = clamp(hotFreq[n] / expectedHot, 0.20, 2.35);
-    const overdueRatio = clamp(drawsSinceSeen(draws, n) / Math.min(maxGap, 80), 0, 1.85);
-    scores[n] = Math.max(
-      0.05,
-      weights.all * allRatio +
-      weights.recent * recentRatio +
-      weights.hot * hotRatio +
-      weights.overdue * (0.55 + overdueRatio)
+    const allRatio = smoothedRelativeFrequency(allFreq[n], draws.length, expectedProbability, 80);
+    const recentRatio = smoothedRelativeFrequency(recentFreq[n], recentDraws.length, expectedProbability, 35);
+    const hotRatio = smoothedRelativeFrequency(hotFreq[n], hotDraws.length, expectedProbability, 20);
+    scores[n] = Math.max(0.05,
+      weights.all * clamp(allRatio, 0.45, 1.80) +
+      weights.recent * clamp(recentRatio, 0.45, 1.80) +
+      weights.hot * clamp(hotRatio, 0.45, 1.80)
     );
   }
   return scores;
@@ -624,51 +617,31 @@ function randomWeighted(items) {
   return items[items.length - 1];
 }
 
-function candidateQuality(nums) {
-  const count = nums.length;
-  const max = LOTO_CONFIG.maxNum;
-  const sum = nums.reduce((s, n) => s + n, 0);
-  const idealSum = count * (max + 1) / 2;
-  const sumScore = 1 - clamp(Math.abs(sum - idealSum) / idealSum, 0, 1);
-  const odd = nums.filter(n => n % 2).length;
-  const oddScore = 1 - clamp(Math.abs(odd - count / 2) / count, 0, 1);
-  const low = nums.filter(n => n <= max / 2).length;
-  const lowScore = 1 - clamp(Math.abs(low - count / 2) / count, 0, 1);
-  let consecutive = 0;
-  for (let i = 1; i < nums.length; i++) {
-    if (nums[i] - nums[i - 1] === 1) consecutive++;
+function generateCandidate(scoreMap) {
+  const count = LOTO_CONFIG.pickCount || 6;
+  const remaining = Object.entries(scoreMap)
+    .map(([n, w]) => ({ n: +n, w: Math.max(Number(w) || 0, 0.05) }));
+  const picked = [];
+
+  while (picked.length < count && remaining.length) {
+    const chosen = randomWeighted(remaining);
+    picked.push(chosen.n);
+    const idx = remaining.findIndex(item => item.n === chosen.n);
+    remaining.splice(idx, 1);
   }
-  const consecutiveScore = 1 - clamp(consecutive / Math.max(1, count - 1), 0, 1);
-  const decades = new Set(nums.map(n => Math.floor((n - 1) / 10))).size;
-  const spreadScore = clamp(decades / Math.min(count, Math.ceil(max / 10)), 0, 1);
-  return (sumScore * 0.25) + (oddScore * 0.25) + (lowScore * 0.20) + (consecutiveScore * 0.15) + (spreadScore * 0.15);
+
+  return picked.sort((a, b) => a - b);
 }
 
-function generateCandidate(scoreMap, profile = 'balanced') {
-  const count = LOTO_CONFIG.pickCount || 6;
-  const items = Object.entries(scoreMap).map(([n, w]) => ({ n: +n, w }));
-  let best = null;
-
-  for (let attempt = 0; attempt < 260; attempt++) {
-    const remaining = items.map(item => ({...item}));
-    const picked = [];
-
-    while (picked.length < count && remaining.length) {
-      const chosen = randomWeighted(remaining);
-      picked.push(chosen.n);
-      const idx = remaining.findIndex(item => item.n === chosen.n);
-      remaining.splice(idx, 1);
-    }
-
-    const nums = picked.sort((a, b) => a - b);
-    const statScore = avg(nums.map(n => scoreMap[n] || 0));
-    const quality = candidateQuality(nums);
-    const noise = Math.random() * (profile === 'trend' ? 0.16 : 0.11);
-    const score = (statScore * 0.68) + (quality * 0.32) + noise;
-    if (!best || score > best.score) best = { nums, score };
-  }
-
-  return best.nums;
+function modelFitScore(nums, scoreMap) {
+  const values = Object.values(scoreMap).map(Number).filter(Number.isFinite);
+  if (!values.length || !nums.length) return 0;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (max === min) return 50;
+  return Math.round(avg(nums.map(n =>
+    clamp(((scoreMap[n] - min) / (max - min)) * 100, 0, 100)
+  )));
 }
 
 function buildBonusScores(draws) {
@@ -676,19 +649,17 @@ function buildBonusScores(draws) {
   const scores = {};
   if (!max) return scores;
   const all = freqBonus(draws);
-  const recent = freqBonus(draws.slice(-Math.min(80, draws.length)));
-  const expectedAll = Math.max(1, draws.length / max);
-  const expectedRecent = Math.max(1, Math.min(80, draws.length) / max);
+  const recentDraws = draws.slice(-Math.min(80, draws.length));
+  const hotDraws = draws.slice(-Math.min(20, draws.length));
+  const recent = freqBonus(recentDraws);
+  const hot = freqBonus(hotDraws);
+  const expectedProbability = 1 / max;
 
   for (let n = 1; n <= max; n++) {
-    let gap = draws.length;
-    for (let i = draws.length - 1, g = 0; i >= 0; i--, g++) {
-      if (draws[i][3] === n) { gap = g; break; }
-    }
     scores[n] =
-      clamp((all[n] || 0) / expectedAll, 0.35, 1.80) * 0.42 +
-      clamp((recent[n] || 0) / expectedRecent, 0.20, 2.10) * 0.35 +
-      clamp(gap / Math.min(draws.length || 1, 60), 0, 1.7) * 0.23;
+      clamp(smoothedRelativeFrequency(all[n] || 0, draws.length, expectedProbability, 50), 0.45, 1.80) * 0.60 +
+      clamp(smoothedRelativeFrequency(recent[n] || 0, recentDraws.length, expectedProbability, 25), 0.45, 1.80) * 0.28 +
+      clamp(smoothedRelativeFrequency(hot[n] || 0, hotDraws.length, expectedProbability, 15), 0.45, 1.80) * 0.12;
   }
   return scores;
 }
@@ -729,24 +700,20 @@ function renderOneri(draws = analysisDraws()) {
   }
   const balancedScores = buildNumberScores(draws, 'balanced');
   const trendScores = buildNumberScores(draws, 'trend');
-  const overdueScores = buildNumberScores(draws, 'overdue');
-  const final1 = generateCandidate(balancedScores, 'balanced');
-  const final2 = generateCandidate(
-    Object.fromEntries(Object.keys(trendScores).map(n => [
-      n,
-      (trendScores[n] * 0.58) + (overdueScores[n] * 0.42)
-    ])),
-    'trend'
-  );
-  const scorePct1 = Math.round(avg(final1.map(n => balancedScores[n])) * 100);
-  const scorePct2 = Math.round(avg(final2.map(n => ((trendScores[n] * 0.58) + (overdueScores[n] * 0.42)))) * 100);
+  const final1 = generateCandidate(balancedScores);
+  const final2 = generateCandidate(trendScores);
+  const scorePct1 = modelFitScore(final1, balancedScores);
+  const scorePct2 = modelFitScore(final2, trendScores);
+  const archiveCount = draws.length.toLocaleString('tr-TR');
 
   // Şans Topu bonusu
   let bonusHtml1 = '', bonusHtml2 = '';
   if (LOTO_CONFIG.bonusMax) {
     const b1 = pickBonus(draws);
     let b2 = pickBonus(draws);
-    if (LOTO_CONFIG.bonusMax > 1 && b2 === b1) b2 = pickBonus(draws);
+    for (let attempt = 0; LOTO_CONFIG.bonusMax > 1 && b2 === b1 && attempt < 12; attempt++) {
+      b2 = pickBonus(draws);
+    }
     bonusHtml1 = `<div class="bonus-hint">🎯 Şans Topu önerisi: <span style="color:#ff6060;font-weight:700">${b1}</span></div>`;
     bonusHtml2 = `<div class="bonus-hint">🎯 Şans Topu önerisi: <span style="color:#ff6060;font-weight:700">${b2}</span></div>`;
   }
@@ -755,24 +722,24 @@ function renderOneri(draws = analysisDraws()) {
     <div class="oneri-card">
       <div class="oneri-card-head">
         <div>
-          <span class="oneri-eyebrow">Kolon 01</span>
-          <h3>Dengeli istatistik</h3>
+          <span class="oneri-eyebrow">Tüm arşiv modeli</span>
+          <h3>Uzun dönem + güncel eğilim</h3>
         </div>
-        <span class="oneri-score" aria-label="İstatistik skoru ${scorePct1}">Skor <strong>${scorePct1}</strong></span>
+        <span class="oneri-score" aria-label="Model uyum puanı ${scorePct1}">Puan <strong>${scorePct1}</strong></span>
       </div>
-      <p>Genel frekans, yakın dönem trendi, gecikme ve sayı dağılımı birlikte skorlanır.</p>
+      <p>${archiveCount} doğrulanmış çekilişin tamamı ile son 120 ve son 30 çekilişin frekansları örneklem düzeltmesiyle birlikte ağırlıklandırılır.</p>
       <div class="balls">${ballsHtml(final1)}</div>
       ${bonusHtml1}
     </div>
     <div class="oneri-card">
       <div class="oneri-card-head">
         <div>
-          <span class="oneri-eyebrow">Kolon 02</span>
-          <h3>Trend + gecikme</h3>
+          <span class="oneri-eyebrow">Yakın dönem modeli</span>
+          <h3>Güncel eğilim ağırlıklı</h3>
         </div>
-        <span class="oneri-score" aria-label="İstatistik skoru ${scorePct2}">Skor <strong>${scorePct2}</strong></span>
+        <span class="oneri-score" aria-label="Model uyum puanı ${scorePct2}">Puan <strong>${scorePct2}</strong></span>
       </div>
-      <p>Son dönem hareketi ve gecikmiş sayı baskısı daha yüksek ağırlıkla hesaplanır.</p>
+      <p>Aynı ${archiveCount} çekilişi taban alır; son 120 ve son 30 çekilişin frekanslarına daha fazla ağırlık verir.</p>
       <div class="balls">${ballsHtml(final2)}</div>
       ${bonusHtml2}
     </div>`;
