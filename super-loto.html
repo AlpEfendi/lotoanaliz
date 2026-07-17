@@ -3,35 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="description" content="Süper Loto geçmiş çekilişlerini; sayı frekansı, trend, gecikme ve istatistiksel kolon önerileriyle analiz edin.">
+<meta name="theme-color" content="#15171a">
 <title>Süper Loto Analiz</title>
-<link rel="stylesheet" href="loto.css?v=6">
-<script src="theme.js?v=3"></script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="icon" href="favicon.svg?v=20260717" type="image/svg+xml">
+<link rel="stylesheet" href="loto.css?v=20260717">
+<script src="theme.js?v=20260717"></script>
 </head>
 <body>
-<div class="navwrap">
-  <div class="navbar">
-    <div class="nav-logo">🎰 Loto Analiz</div>
+<a class="skip-link" href="#main-content">Ana içeriğe geç</a>
+<header class="navwrap">
+  <nav class="navbar" aria-label="Ana menü">
+    <a class="nav-logo" href="index.html" aria-label="Loto Analiz ana sayfa">🎰 Loto Analiz</a>
     <a class="navlink " href="index.html">Ana Sayfa</a>
     <a class="navlink sl " href="sayisal-loto.html">Sayısal Loto</a>
-    <a class="navlink sup active" href="super-loto.html">Süper Loto</a>
+    <a class="navlink sup active" href="super-loto.html" aria-current="page">Süper Loto</a>
     <a class="navlink st " href="sans-topu.html">Şans Topu</a>
     <a class="navlink on " href="on-numara.html">On Numara</a>
-  </div>
-</div>
-<div class="wrap">
+  </nav>
+</header>
+<main id="main-content" class="wrap" tabindex="-1">
 
 <!-- HEADER -->
-<div class="hdr">
+<header class="hdr">
   <div class="hdr-left">
     <div class="hdr-title-row">
-      <img class="hdr-logo" src="assets-super-logo.png" alt="Süper Loto">
+      <h1 class="sr-only">Süper Loto Analizi</h1>
+      <img class="hdr-logo" src="assets-super-logo.png" alt="" width="485" height="90">
     </div>
     <p id="hSub">Yükleniyor…</p>
   </div>
   <div class="badge"><span class="badge-dot"></span><span id="hBadge">—</span></div>
-</div>
+</header>
 
 <!-- STATS -->
 <div class="stat-row">
@@ -43,93 +47,94 @@
   <div class="stat"><div class="stat-v" style="color:var(--accent)" id="sGold">—</div><div class="stat-l">Altın ⭐</div></div>
 </div>
 
-<div class="draw-status" id="drawStatus">Güncellik kontrol ediliyor…</div>
+<div class="draw-status" id="drawStatus" role="status" aria-live="polite">Güncellik kontrol ediliyor…</div>
 
 <!-- YENİ ÇEKİLİŞ -->
 <div class="card">
-  <div class="card-title"><span class="ctag" style="background:var(--teal)"></span>Yeni çekiliş ekle</div>
-  <div class="form-row">
-    <div class="fld fld-sm"><label>Hafta No</label><input type="number" id="iHft" min="1" max="9999" placeholder="58"></div>
-    <div class="fld fld-md"><label>Tarih (GG/AA/YYYY)</label><input type="text" id="iDate" placeholder="16/06/2026" maxlength="10"></div>
-    <div class="fld fld-lg"><label>6 Sayı (boşlukla)</label><input type="text" id="iNums" placeholder="1 2 3 4 5 6" maxlength="40"></div>
-    <button class="btn btn-primary" onclick="addDraw()">+ Ekle</button>
-  </div>
-  <div class="err" id="fErr"></div>
-  <div class="hint">Sayılar 1–60 arası, tekrarsız. Hafta no otomatik önerilir.</div>
+  <h2 class="card-title"><span class="ctag" style="background:var(--teal)"></span>Yeni çekiliş ekle</h2>
+  <form id="drawForm" class="form-row">
+    <div class="fld fld-sm"><label for="iHft">Hafta No</label><input type="number" id="iHft" name="week" min="1" max="9999" placeholder="58" autocomplete="off" inputmode="numeric" required></div>
+    <div class="fld fld-md"><label for="iDate">Tarih (GG/AA/YYYY)</label><input type="text" id="iDate" name="date" placeholder="16/06/2026" maxlength="10" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" autocomplete="off" inputmode="numeric" aria-describedby="drawHint" required></div>
+    <div class="fld fld-lg"><label for="iNums">6 Sayı (boşlukla)</label><input type="text" id="iNums" name="numbers" placeholder="1 2 3 4 5 6" maxlength="40" autocomplete="off" inputmode="text" aria-describedby="drawHint" required></div>
+    <button type="submit" class="btn btn-primary">+ Ekle</button>
+  </form>
+  <div class="err" id="fErr" role="alert"></div>
+  <div class="hint" id="drawHint">Sayılar 1–60 arası, tekrarsız. Hafta no otomatik önerilir.</div>
   <div class="import-box">
     <div class="import-title">TXT ile toplu ekle</div>
     <div class="import-row">
-      <input type="file" id="iImportTxt" accept=".txt,text/plain">
-      <button class="btn-sm" onclick="importTxt()">TXT Yükle</button>
-      <button class="btn-sm" onclick="downloadDataFile()">Veri Dosyasını İndir</button>
+      <label for="iImportTxt">TXT dosyası</label>
+      <input type="file" id="iImportTxt" name="importFile" accept=".txt,text/plain">
+      <button type="button" class="btn-sm" data-action="import-txt">TXT Yükle</button>
+      <button type="button" class="btn-sm" data-action="download-data">Veri Dosyasını İndir</button>
     </div>
-    <div class="hint" id="importInfo">Arşiv satırlarında tarih, hafta ve 6 sayı okunur.</div>
+    <div class="hint" id="importInfo" role="status" aria-live="polite">Arşiv satırlarında tarih, hafta ve 6 sayı okunur.</div>
   </div>
 </div>
 
 <!-- ANALİZ SEKMELERİ -->
 <div class="card" style="padding-bottom:12px">
-  <div class="tabs">
-    <button class="tab on" onclick="tab('harita',this)">🗺 Harita</button>
-    <button class="tab" onclick="tab('siralama',this)">📊 Sıralama</button>
-    <button class="tab" onclick="tab('gecikme',this)">⏳ Gecikmiş</button>
-    <button class="tab" onclick="tab('hot',this)">🔥 Hot</button>
-    <button class="tab" onclick="tab('gold',this)">⭐ Altın</button>
-    <button class="tab" onclick="tab('tablo',this)">📋 Geçmiş</button>
+  <div class="tabs" role="tablist" aria-label="Analiz görünümleri">
+    <button type="button" class="tab on" id="tab-harita" role="tab" data-tab-target="harita" aria-controls="t-harita" aria-selected="true" tabindex="0">🗺 Harita</button>
+    <button type="button" class="tab" id="tab-siralama" role="tab" data-tab-target="siralama" aria-controls="t-siralama" aria-selected="false" tabindex="-1">📊 Sıralama</button>
+    <button type="button" class="tab" id="tab-gecikme" role="tab" data-tab-target="gecikme" aria-controls="t-gecikme" aria-selected="false" tabindex="-1">⏳ Gecikmiş</button>
+    <button type="button" class="tab" id="tab-hot" role="tab" data-tab-target="hot" aria-controls="t-hot" aria-selected="false" tabindex="-1">🔥 Hot</button>
+    <button type="button" class="tab" id="tab-gold" role="tab" data-tab-target="gold" aria-controls="t-gold" aria-selected="false" tabindex="-1">⭐ Altın</button>
+    <button type="button" class="tab" id="tab-tablo" role="tab" data-tab-target="tablo" aria-controls="t-tablo" aria-selected="false" tabindex="-1">📋 Geçmiş</button>
   </div>
 
   <!-- HARITA -->
-  <div id="t-harita">
+  <div id="t-harita" role="tabpanel" aria-labelledby="tab-harita" tabindex="0">
     <div class="grid-legend">
-      <div class="gl"><div class="gld" style="background:#2ecc8a;opacity:.8"></div>Çok sık</div>
-      <div class="gl"><div class="gld" style="background:#1dc7bb;opacity:.8"></div>Sık</div>
-      <div class="gl"><div class="gld" style="background:#888;opacity:.5"></div>Ortalama</div>
-      <div class="gl"><div class="gld" style="background:#f09030;opacity:.8"></div>Seyrek</div>
-      <div class="gl"><div class="gld" style="background:#e85555;opacity:.8"></div>Çok seyrek</div>
+      <div class="gl"><div class="gld" style="background:var(--freq-c5);opacity:.8"></div>Çok sık</div>
+      <div class="gl"><div class="gld" style="background:var(--freq-c4);opacity:.8"></div>Sık</div>
+      <div class="gl"><div class="gld" style="background:var(--freq-c3);opacity:.5"></div>Ortalama</div>
+      <div class="gl"><div class="gld" style="background:var(--freq-c2);opacity:.8"></div>Seyrek</div>
+      <div class="gl"><div class="gld" style="background:var(--freq-c1);opacity:.8"></div>Çok seyrek</div>
     </div>
     <div class="grid90" id="gGrid"></div>
   </div>
 
   <!-- SIRALAMA -->
-  <div id="t-siralama" style="display:none">
+  <div id="t-siralama" role="tabpanel" aria-labelledby="tab-siralama" tabindex="0" hidden>
     <div class="two">
       <div>
-        <div class="card-title" style="margin-bottom:8px"><span class="ctag" style="background:var(--green)"></span>En çok çıkan 20</div>
+        <h2 class="card-title" style="margin-bottom:8px"><span class="ctag" style="background:var(--green)"></span>En çok çıkan 20</h2>
         <div class="rl" id="rTop"></div>
       </div>
       <div>
-        <div class="card-title" style="margin-bottom:8px"><span class="ctag" style="background:var(--red)"></span>En az çıkan 20</div>
+        <h2 class="card-title" style="margin-bottom:8px"><span class="ctag" style="background:var(--red)"></span>En az çıkan 20</h2>
         <div class="rl" id="rBot"></div>
       </div>
     </div>
   </div>
 
   <!-- GECİKMİŞ -->
-  <div id="t-gecikme" style="display:none">
+  <div id="t-gecikme" role="tabpanel" aria-labelledby="tab-gecikme" tabindex="0" hidden>
     <p style="font-size:0.78rem;color:var(--text3);margin-bottom:10px">Son 30 çekilişte görülmeyen sayılar — istatistiksel baskı yüksek</p>
     <div class="chips" id="cMiss"></div>
   </div>
 
   <!-- HOT -->
-  <div id="t-hot" style="display:none">
+  <div id="t-hot" role="tabpanel" aria-labelledby="tab-hot" tabindex="0" hidden>
     <p style="font-size:0.78rem;color:var(--text3);margin-bottom:10px">🔥 Son 30 çekilişte oyun ortalamasının üstüne çıkan sayılar parlak, diğerleri soluk gösterilir.</p>
     <div class="grid90" id="gHot"></div>
   </div>
 
   <!-- ALTIN -->
-  <div id="t-gold" style="display:none">
+  <div id="t-gold" role="tabpanel" aria-labelledby="tab-gold" tabindex="0" hidden>
     <p style="font-size:0.78rem;color:var(--text3);margin-bottom:10px">⭐ Altın sayılar: 1, 5, 10, 20, 40, 50 — genel frekans sıralaması</p>
     <div class="rl" id="rGold"></div>
   </div>
 
   <!-- TABLO -->
-  <div id="t-tablo" style="display:none">
+  <div id="t-tablo" role="tabpanel" aria-labelledby="tab-tablo" tabindex="0" hidden>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
       <span style="font-size:0.78rem;color:var(--text3)">Son 80 çekiliş</span>
-      <button class="btn-sm" onclick="exportCSV()">CSV İndir</button>
+      <button type="button" class="btn-sm" data-action="export-csv">CSV İndir</button>
     </div>
-    <div class="tbl-wrap">
-      <table><thead><tr><th>Hft</th><th>Tarih</th><th>Sayılar</th><th></th></tr></thead>
+    <div class="tbl-wrap" tabindex="0" role="region" aria-label="Son çekiliş sonuçları tablosu">
+      <table><caption class="sr-only">Son 80 Süper Loto çekilişi</caption><thead><tr><th scope="col">Hft</th><th scope="col">Tarih</th><th scope="col">Sayılar</th><th scope="col">İşlemler</th></tr></thead>
       <tbody id="tBody"></tbody></table>
     </div>
   </div>
@@ -138,33 +143,34 @@
 <!-- ÖNERİ -->
 <div class="card">
   <div class="oneri-hdr">
-    <div class="card-title" style="margin-bottom:0"><span class="ctag" style="background:var(--gold)"></span>Sonraki çekiliş önerisi</div>
-    <button class="btn btn-primary" onclick="regenerateOneri()">🔄 Yeniden öner</button>
+    <h2 class="card-title" style="margin-bottom:0"><span class="ctag" style="background:var(--gold)"></span>Sonraki çekiliş önerisi</h2>
+    <button type="button" class="btn btn-primary" data-action="regenerate">🔄 Yeniden öner</button>
   </div>
   <div class="oneri-grid" id="oGrid"></div>
   <p class="note">⚠ Sayısal loto tamamen rastgeledir. Geçmiş istatistikler gelecek sonucu garanti etmez.</p>
 </div>
 
-</div><!-- /wrap -->
-<div class="toast" id="toast"></div>
-<script src="data-super.js?v=2"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="supabase-config.js"></script>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<script src="data-super.js?v=20260717"></script>
+<script src="supabase-config.js?v=20260717"></script>
 <script>
 const LOTO_CONFIG = {
   maxNum: 60,
   bonusMax: 0,
   pickCount: 6,
+  importWeekMode: 'preferred',
   drawDays: [2,4,0],
   storageKey: 'superUserDraws',
   gameName: 'Süper Loto',
-  sinceLabel: 'Ocak 2022→',
+  sinceLabel: 'Ağustos 2020→',
+  analysisStartDate: '02/08/2020',
   csvName: 'super-loto.csv',
   goldNumbers: [1,5,10,20,40,50],
   data: SUPER_DATA,
 };
 </script>
-<script src="loto.js?v=6"></script>
+<script src="loto.js?v=20260717"></script>
 </body>
 </html>
 
