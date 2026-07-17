@@ -235,14 +235,21 @@ body {
   margin-right: 4px; letter-spacing: -.02em;
   display: flex; align-items: center; gap: 6px; min-height: 44px;
   flex: 0 0 auto;
+}
+.nav-logo-mark {
+  width:26px; height:26px; flex:0 0 26px; display:block;
+  border-radius:7px;
+  box-shadow:0 5px 14px rgba(0,0,0,.18);
+}
+.nav-logo > span {
   background: linear-gradient(135deg, #fff, var(--text3));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 .nav-links { display:flex; align-items:center; justify-content:flex-end; gap:5px; min-width:0; margin-left:auto; }
-:root[data-theme="light"] .nav-logo,
-:root.theme-light .nav-logo { background: linear-gradient(135deg, var(--text), var(--text3)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+:root[data-theme="light"] .nav-logo > span,
+:root.theme-light .nav-logo > span { background: linear-gradient(135deg, var(--text), var(--text3)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .navbar a.navlink {
   padding: 8px 12px; border-radius: var(--r-sm);
   font-size: 0.84rem; font-weight: 600;
