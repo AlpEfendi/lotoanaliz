@@ -1854,14 +1854,37 @@ async function syncArchiveToCloud() {
   if (plan.conflicts.length) {
     return showErr(`${plan.conflicts.length} yerel kayıt çakışması çözülmeden toplu aktarım yapılamaz.`);
   }
-  const rows = plan.draws.map(drawToRow);
+  const rows = plan.draws.map(draw => {
+    const row = drawToRow(draw);
+    return {
+      draw_date: row.draw_date,
+      week_no: row.week_no,
+      numbers: row.numbers,
+      bonus: row.bonus
+    };
+  });
   try {
-    for (let i = 0; i < rows.length; i += 400) {
-      const { error } = await cloudClient.from('loto_draws').upsert(rows.slice(i, i + 400), { onConflict: 'game,draw_date' });
-      if (error) return showErr(`Aktarım durdu: ${error.message}`);
+    // Kategori arsivini veritabaninda tek transaction icinde degistirir. Eski
+    // bozuk tarih/hafta satirlari temizlenir; en ufak hatada tum islem geri alinir.
+    const { data: replacedCount, error } = await cloudClient.rpc('replace_loto_archive', {
+      p_game: gameId(),
+      p_rows: rows
+    });
+    if (error?.code === 'PGRST202') {
+      return showErr('Aktarım için güncel Supabase SQL dosyasını SQL Editor’da yeniden çalıştırın.');
     }
+    if (error) return showErr(`Aktarım durdu; buluttaki eski arşiv korundu: ${error.message}`);
+    if (Number(replacedCount) !== rows.length) {
+      return showErr('Aktarım tamamlanamadı: buluttaki satır sayısı doğrulanamadı.');
+    }
+
     const cloudResult = await loadCloudDraws();
     if (!cloudResult.ok) return showErr(`Aktarım tamamlandı ancak doğrulama okunamadı: ${cloudResult.error}`);
+    const expectedByDate = new Map(plan.draws.map(draw => [draw[1], draw]));
+    const verified = cloudDraws.length === plan.draws.length
+      && cloudDraws.every(draw => sameDrawPayload(draw, expectedByDate.get(draw[1])));
+    if (!verified) return showErr('Aktarım tamamlandı ancak bulut arşivi yerel arşivle aynı görünmüyor.');
+
     const localPending = userDraws;
     userDraws = [];
     const localCleared = saveUser();
