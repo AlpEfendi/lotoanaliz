@@ -6,6 +6,12 @@ on:
     - cron: '30 21 * * *'
     - cron: '30 1 * * *'
   workflow_dispatch:
+    inputs:
+      months_back:
+        description: Önceki kaç ay da kontrol edilsin?
+        required: false
+        default: '1'
+        type: string
 
 permissions:
   contents: read
@@ -41,6 +47,7 @@ jobs:
         env:
           LOTO_HEADLESS: 'false'
           LOTO_BROWSER_CHANNEL: chrome
+          LOTO_MONTHS_BACK: ${{ inputs.months_back || '1' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
 

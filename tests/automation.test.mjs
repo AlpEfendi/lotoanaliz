@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { deduplicateDraws, GAMES, parseCard, validateDraw } from '../automation/scrape-and-sync.mjs';
+import { deduplicateDraws, getTargetPeriods, GAMES, parseCard, validateDraw } from '../automation/scrape-and-sync.mjs';
 
 const officialHref = '/sayisal-loto/cekilis-sonuclari/95';
 
@@ -79,6 +79,17 @@ test('aynı oyun ve tarihte farklı sonuç kaynak hatası sayılır', () => {
   ]), /iki farklı sonuç/);
 });
 
+test('otomasyon mevcut ayla birlikte önceki ayı ve yıl geçişini tarar', () => {
+  assert.deepEqual(getTargetPeriods(1, new Date('2026-08-11T12:00:00+03:00')), [
+    { year: 2026, month: 8 },
+    { year: 2026, month: 7 }
+  ]);
+  assert.deepEqual(getTargetPeriods(1, new Date('2027-01-02T12:00:00+03:00')), [
+    { year: 2027, month: 1 },
+    { year: 2026, month: 12 }
+  ]);
+});
+
 test('SQL aktarımı sadece service_role ile çalışır ve manuel çakışmayı ezmez', async () => {
   const sql = await readFile(new URL('../supabase-automation.sql', import.meta.url), 'utf8');
   assert.match(sql, /auth\.role\(\).*service_role/s);
@@ -94,4 +105,15 @@ test('GitHub zamanlayıcısı gizli Supabase anahtarı kullanır', async () => {
   assert.match(workflow, /secrets\.SUPABASE_SECRET_KEY/);
   assert.match(workflow, /xvfb-run --auto-servernum npm run sync:loto/);
   assert.match(workflow, /LOTO_HEADLESS: 'false'/);
+  assert.match(workflow, /LOTO_MONTHS_BACK:/);
+});
+
+test('manuel online kontrol yalnız yönetici Edge Function üzerinden tetiklenir', async () => {
+  const frontend = await readFile(new URL('../loto.js', import.meta.url), 'utf8');
+  const edgeFunction = await readFile(new URL('../supabase/functions/trigger-loto-sync/index.ts', import.meta.url), 'utf8');
+  assert.match(frontend, /functions\.invoke\('trigger-loto-sync'/);
+  assert.match(edgeFunction, /rpc\('is_loto_admin'\)/);
+  assert.match(edgeFunction, /GITHUB_ACTIONS_TOKEN/);
+  assert.match(edgeFunction, /actions\/workflows\/loto-sync\.yml\/dispatches/);
+  assert.doesNotMatch(frontend, /GITHUB_ACTIONS_TOKEN/);
 });

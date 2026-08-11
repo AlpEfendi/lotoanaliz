@@ -361,6 +361,9 @@ body {
 .cloud-panel strong { color:var(--text2); font-size:.86rem; }
 .cloud-panel span { color:var(--text3); font-size:.74rem; }
 .cloud-login,.cloud-actions { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.cloud-actions .online-sync-btn { border-color:color-mix(in srgb,var(--teal) 62%,var(--border2)); color:var(--teal); background:color-mix(in srgb,var(--teal) 9%,var(--bg4)); }
+.cloud-actions .online-sync-btn:hover { color:var(--text); border-color:var(--teal); box-shadow:0 0 14px -4px var(--teal); }
+.btn-sm:disabled { cursor:wait; opacity:.65; transform:none; box-shadow:none; }
 .cloud-login input { width:min(190px,100%); padding:7px 9px; border:1px solid var(--border2); border-radius:var(--r-sm); background:var(--bg); color:var(--text); }
 .cloud-login input[aria-invalid="true"] { border-color:var(--red); box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 18%,transparent); }
 .cloud-login .cloud-error { flex:1 0 100%; padding:7px 9px; border:1px solid color-mix(in srgb,var(--red) 45%,transparent); border-radius:var(--r-sm); background:color-mix(in srgb,var(--red) 10%,transparent); color:var(--red); font-size:.78rem; line-height:1.45; }
