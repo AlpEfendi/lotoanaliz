@@ -1,0 +1,13 @@
+{
+  "name": "loto-analiz",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/loto-core.test.js tests/data-integrity.test.js tests/html-structure.test.js tests/automation.test.mjs",
+    "check": "node --check loto.js && node --check theme.js && node --check supabase-config.js && node --check automation/scrape-and-sync.mjs",
+    "sync:loto": "node automation/scrape-and-sync.mjs",
+    "sync:loto:dry": "node automation/scrape-and-sync.mjs --dry-run"
+  },
+  "devDependencies": {
+    "playwright": "1.62.0"
+  }
+}

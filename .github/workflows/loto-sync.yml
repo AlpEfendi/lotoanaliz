@@ -1,0 +1,50 @@
+name: Loto sonuçlarını eşitle
+
+on:
+  schedule:
+    # Supabase ve GitHub cron saatleri UTC'dir: 21:30 UTC = 00:30 Türkiye.
+    - cron: '30 21 * * *'
+    - cron: '30 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: loto-result-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Bağımlılıkları kur
+        run: npm ci
+
+      - name: Chromium kur
+        run: npx playwright install --with-deps chromium
+
+      - name: Resmî sonuçları doğrula ve Supabase'e aktar
+        run: npm run sync:loto
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+
+      - name: Hata ekranını sakla
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loto-sync-error
+          path: loto-sync-error.png
+          if-no-files-found: ignore
+          retention-days: 7
