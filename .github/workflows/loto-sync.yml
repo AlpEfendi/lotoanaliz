@@ -35,8 +35,12 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Resmî sonuçları doğrula ve Supabase'e aktar
-        run: npm run sync:loto
+        # Resmî kaynak başsız tarayıcı bağlantılarını zaman aşımına uğratabildiği
+        # için Chrome sanal bir ekran üzerinde normal tarayıcı modunda çalışır.
+        run: xvfb-run --auto-servernum npm run sync:loto
         env:
+          LOTO_HEADLESS: 'false'
+          LOTO_BROWSER_CHANNEL: chrome
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
 
@@ -45,6 +49,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: loto-sync-error
-          path: loto-sync-error.png
-          if-no-files-found: ignore
+          path: |
+            loto-sync-error.png
+            loto-sync-diagnostics.json
+          if-no-files-found: warn
           retention-days: 7

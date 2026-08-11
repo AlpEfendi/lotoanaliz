@@ -92,5 +92,6 @@ test('GitHub zamanlayıcısı gizli Supabase anahtarı kullanır', async () => {
   const workflow = await readFile(new URL('../.github/workflows/loto-sync.yml', import.meta.url), 'utf8');
   assert.match(workflow, /schedule:/);
   assert.match(workflow, /secrets\.SUPABASE_SECRET_KEY/);
-  assert.match(workflow, /npm run sync:loto/);
+  assert.match(workflow, /xvfb-run --auto-servernum npm run sync:loto/);
+  assert.match(workflow, /LOTO_HEADLESS: 'false'/);
 });
