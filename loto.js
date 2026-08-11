@@ -1460,8 +1460,11 @@ function renderCloudPanel() {
     actions.className = 'cloud-actions';
     if (cloudIsAdmin) {
       appendCloudSummary(panel, 'Bulut senkronizasyonu açık', cloudSession.user?.email || 'Yönetici');
+      const officialSyncButton = createCloudButton('Online sonuçları kontrol et', triggerOfficialResultSync);
+      officialSyncButton.classList.add('online-sync-btn');
       actions.append(
         createCloudButton('Mevcut arşivi buluta aktar', syncArchiveToCloud),
+        officialSyncButton,
         createCloudButton('Çıkış', cloudLogout)
       );
     } else {
@@ -1875,6 +1878,72 @@ async function syncArchiveToCloud() {
     else toast(`${rows.length} sonuç buluta aktarıldı; yerel bekleyen kayıtlar temizlenemedi`, 'warn');
   } catch (e) {
     showErr(`Aktarım başarısız: ${e.message || 'ağ hatası'}`);
+  }
+}
+
+function wait(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+async function waitForOfficialSync(requestedAfter) {
+  for (let attempt = 0; attempt < 45; attempt += 1) {
+    await wait(4000);
+    const { data, error } = await cloudClient
+      .from('loto_sync_runs')
+      .select('id,finished_at,status,inserted_count,skipped_count,conflict_count')
+      .gte('started_at', requestedAfter)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data?.finished_at) return data;
+  }
+  throw new Error('Kontrol başlatıldı ancak üç dakika içinde tamamlanmadı. GitHub Actions durumunu kontrol edin.');
+}
+
+async function triggerOfficialResultSync(event) {
+  clearFormError();
+  if (!cloudSession || !cloudIsAdmin || !cloudClient) return showErr('Yetkili yönetici girişi gerekli.');
+  const button = event?.currentTarget;
+  const originalLabel = button?.textContent || 'Online sonuçları kontrol et';
+  const requestedAfter = new Date(Date.now() - 5000).toISOString();
+  if (button) {
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    button.textContent = 'Kontrol başlatılıyor…';
+  }
+
+  try {
+    const { data, error } = await cloudClient.functions.invoke('trigger-loto-sync', {
+      body: { requested_from: gameId() }
+    });
+    if (error) {
+      let detail = error.message;
+      try {
+        const payload = await error.context?.json();
+        if (payload?.error) detail = payload.error;
+      } catch {}
+      throw new Error(detail || 'Otomasyon başlatılamadı.');
+    }
+    if (data?.ok !== true) throw new Error(data?.error || 'Otomasyon başlatılamadı.');
+
+    if (button) button.textContent = 'Sonuçlar kontrol ediliyor…';
+    toast('Online sonuç kontrolü başlatıldı; resmî kaynak taranıyor.');
+    const run = await waitForOfficialSync(requestedAfter);
+    const cloudResult = await loadCloudDraws();
+    if (!cloudResult.ok) throw new Error(`Sonuçlar işlendi ancak bulut arşivi yenilenemedi: ${cloudResult.error}`);
+    render();
+    const summary = `${run.inserted_count} yeni, ${run.skipped_count} zaten kayıtlı`;
+    if (run.conflict_count) toast(`Online kontrol tamamlandı: ${summary}, ${run.conflict_count} çakışma inceleme bekliyor.`, 'warn');
+    else toast(`Online kontrol tamamlandı: ${summary}.`);
+  } catch (error) {
+    toast(`Online kontrol başlatılamadı: ${error.message || 'ağ hatası'}`, 'warn');
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+      button.textContent = originalLabel;
+    }
   }
 }
 

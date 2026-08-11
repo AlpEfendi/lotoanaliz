@@ -51,6 +51,23 @@ function normalizeNumbers(values) {
   return values.map(Number).sort((a, b) => a - b);
 }
 
+export function getTargetPeriods(monthsBack = 1, now = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: 'numeric'
+  }).formatToParts(now).filter(part => part.type !== 'literal').map(part => [part.type, Number(part.value)]));
+  const safeMonthsBack = Math.min(Math.max(Number.parseInt(monthsBack, 10) || 0, 0), 12);
+  const currentMonthIndex = (parts.year * 12) + parts.month - 1;
+  return Array.from({ length: safeMonthsBack + 1 }, (_, offset) => {
+    const monthIndex = currentMonthIndex - offset;
+    return {
+      year: Math.floor(monthIndex / 12),
+      month: (monthIndex % 12) + 1
+    };
+  });
+}
+
 export function validateDraw(draw, config, today = new Date()) {
   if (!draw || !Object.hasOwn(GAMES, draw.game)) return 'Bilinmeyen oyun.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draw.draw_date)) return 'Geçersiz çekiliş tarihi.';
@@ -122,25 +139,49 @@ async function openDrawPage(page, url, game) {
   });
 }
 
-async function scrapeGame(page, game, config) {
-  const url = `${SOURCE_ORIGIN}${config.path}`;
-  await openDrawPage(page, url, game);
+async function selectDrawPeriod(page, game, period) {
+  const year = String(period.year);
+  const month = String(period.month);
+  if (!await page.locator(`#draw-year option[value="${year}"]`).count()) {
+    throw new Error(`${game}: resmî sayfada ${year} yılı seçeneği bulunamadı.`);
+  }
+  await page.locator('#draw-year').selectOption(year);
+  await page.locator('#draw-month').selectOption(month);
+  await page.getByRole('button', { name: 'FİLTRELE' }).click();
+  await page.waitForFunction(({ expectedMonth, expectedYear }) => {
+    const text = document.querySelector('[data-testid="draw-date"]')?.textContent || '';
+    const match = text.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+    return Boolean(match && Number(match[2]) === expectedMonth && Number(match[3]) === expectedYear);
+  }, { expectedMonth: period.month, expectedYear: period.year }, { timeout: 45_000 });
+}
 
-  const rawCards = await page.locator(CARD_SELECTOR).evaluateAll((cards, numberSelector) =>
-    cards.map(card => ({
-      type: card.getAttribute('data-page-type'),
-      label: card.querySelector('[data-testid="draw-label-and-number"]')?.textContent?.trim() || '',
-      date: card.querySelector('[data-testid="draw-date"]')?.textContent?.trim() || '',
-      href: card.querySelector('.draw-details-redirect')?.getAttribute('href') || '',
-      numbers: [...card.querySelectorAll(numberSelector)].map(element => ({
-        value: element.textContent?.trim() || '',
-        content: element.getAttribute('data-content') || ''
-      }))
-    })), NUMBER_SELECTOR);
+async function scrapeGame(page, game, config, periods) {
+  await openDrawPage(page, `${SOURCE_ORIGIN}${config.path}`, game);
+  const draws = [];
 
-  const matchingCards = rawCards.filter(card => card.type === config.pageType);
-  if (!matchingCards.length) throw new Error(`${game}: resmî sayfada sonuç kartı bulunamadı.`);
-  return matchingCards.map(card => parseCard(card, game, config));
+  for (const period of periods) {
+    await selectDrawPeriod(page, game, period);
+
+    const rawCards = await page.locator(CARD_SELECTOR).evaluateAll((cards, numberSelector) =>
+      cards.map(card => ({
+        type: card.getAttribute('data-page-type'),
+        label: card.querySelector('[data-testid="draw-label-and-number"]')?.textContent?.trim() || '',
+        date: card.querySelector('[data-testid="draw-date"]')?.textContent?.trim() || '',
+        href: card.querySelector('.draw-details-redirect')?.getAttribute('href') || '',
+        numbers: [...card.querySelectorAll(numberSelector)].map(element => ({
+          value: element.textContent?.trim() || '',
+          content: element.getAttribute('data-content') || ''
+        }))
+      })), NUMBER_SELECTOR);
+
+    const matchingCards = rawCards.filter(card => card.type === config.pageType);
+    if (!matchingCards.length) {
+      throw new Error(`${game}: ${period.month}/${period.year} için resmî sonuç kartı bulunamadı.`);
+    }
+    draws.push(...matchingCards.map(card => parseCard(card, game, config)));
+  }
+
+  return draws.sort((left, right) => left.draw_date.localeCompare(right.draw_date));
 }
 
 export function deduplicateDraws(draws) {
@@ -182,6 +223,7 @@ async function main() {
   const dryRun = hasFlag('--dry-run');
   const headless = process.env.LOTO_HEADLESS !== 'false';
   const browserChannel = process.env.LOTO_BROWSER_CHANNEL || 'chrome';
+  const periods = getTargetPeriods(process.env.LOTO_MONTHS_BACK ?? 1);
   const browser = await chromium.launch({
     channel: browserChannel,
     headless,
@@ -199,7 +241,7 @@ async function main() {
 
   try {
     for (const [game, config] of Object.entries(GAMES)) {
-      const draws = await scrapeGame(page, game, config);
+      const draws = await scrapeGame(page, game, config, periods);
       results.push(...draws);
       console.log(`${game}: ${draws.length} sonuç doğrulandı; son tarih ${draws.at(-1)?.draw_date || '—'}`);
     }

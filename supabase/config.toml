@@ -1,0 +1,4 @@
+project_id = "lotoanaliz"
+
+[functions.trigger-loto-sync]
+verify_jwt = true

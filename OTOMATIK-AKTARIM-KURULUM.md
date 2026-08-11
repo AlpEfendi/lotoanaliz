@@ -47,9 +47,24 @@ order by detected_at desc;
 
 İlk sorguda `status = success` ve ikinci sorguda sıfır satır beklenir. `conflict` görünürse otomasyon kaydı ezmemiştir; manuel kayıt ile resmî sonucu karşılaştırmak gerekir.
 
+## Site içindeki manuel kontrol düğmesi
+
+`Online sonuçları kontrol et` düğmesi, yönetici oturumunu Supabase'de doğrulayan `trigger-loto-sync` Edge Function üzerinden GitHub iş akışını başlatır. GitHub anahtarı site JavaScript'ine yazılmaz.
+
+1. GitHub'da yalnız `AlpEfendi/lotoanaliz` deposuna erişen bir fine-grained personal access token oluşturun. Repository permission olarak **Actions: Read and write** verin.
+2. Supabase **Edge Functions > Secrets** bölümüne `GITHUB_ACTIONS_TOKEN` adıyla bu anahtarı ekleyin.
+3. Supabase CLI ile projeyi bağlayıp fonksiyonu dağıtın:
+
+```powershell
+npx supabase login
+npx supabase functions deploy trigger-loto-sync --project-ref etljhwfxqqtuhmxnajqj --use-api
+```
+
+Bu gizli anahtarı site dosyalarına, GitHub deposuna veya sohbet ekranına yapıştırmayın. Düğme yalnız `loto_admins` tablosundaki oturum açmış yönetici tarafından kullanılabilir.
+
 ## Çalışma sıklığı
 
-`.github/workflows/loto-sync.yml` otomasyonu Türkiye saatiyle yaklaşık **00:30** ve **04:30**'da çalıştırır. Sonuç henüz yayımlanmamışsa bir sonraki çalışmada alınır. GitHub zamanlanmış işleri yoğunluk nedeniyle birkaç dakika geciktirebilir.
+`.github/workflows/loto-sync.yml` otomasyonu Türkiye saatiyle yaklaşık **00:30** ve **04:30**'da çalıştırır. Her çalışmada mevcut ayla birlikte önceki ay da taranır. Sonuç henüz yayımlanmamışsa bir sonraki çalışmada alınır. GitHub zamanlanmış işleri yoğunluk nedeniyle birkaç dakika geciktirebilir.
 
 ## Yerel kuru test
 
