@@ -1,5 +1,7 @@
 node_modules/
 loto-sync-error.png
+loto-sync-diagnostics.json
+artifacts/
 .env
 .env.*
 !.env.example

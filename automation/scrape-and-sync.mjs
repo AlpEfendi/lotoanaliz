@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import { writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 const SOURCE_ORIGIN = 'https://www.millipiyangoonline.com';
@@ -97,12 +98,33 @@ export function parseCard(rawCard, game, config) {
   return draw;
 }
 
+async function openDrawPage(page, url, game) {
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      // Bazı CDN yanıtları DOMContentLoaded sinyalini tamamlamasa da React
+      // içeriği yükleniyor; yanıt başlar başlamaz seçici üzerinden bekliyoruz.
+      await page.goto(url, { waitUntil: 'commit', timeout: 60_000 });
+      await page.locator('[data-testid="draw-label-and-number"]').first()
+        .waitFor({ state: 'visible', timeout: 45_000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      console.warn(`${game}: resmî sayfa denemesi ${attempt}/2 başarısız: ${error.message}`);
+      if (attempt < 2) {
+        await page.evaluate(() => window.stop()).catch(() => {});
+        await page.waitForTimeout(5_000);
+      }
+    }
+  }
+  throw new Error(`${game}: resmî sonuç sayfasına iki denemede erişilemedi. ${lastError?.message || ''}`.trim(), {
+    cause: lastError
+  });
+}
+
 async function scrapeGame(page, game, config) {
   const url = `${SOURCE_ORIGIN}${config.path}`;
-  // Bazı CDN yanıtları DOMContentLoaded sinyalini tamamlamasa da React içeriği
-  // yükleniyor; bu nedenle yanıt başlar başlamaz seçici üzerinden bekliyoruz.
-  await page.goto(url, { waitUntil: 'commit', timeout: 60_000 });
-  await page.locator('[data-testid="draw-label-and-number"]').first().waitFor({ state: 'visible', timeout: 45_000 });
+  await openDrawPage(page, url, game);
 
   const rawCards = await page.locator(CARD_SELECTOR).evaluateAll((cards, numberSelector) =>
     cards.map(card => ({
@@ -158,9 +180,11 @@ async function importToSupabase(draws) {
 
 async function main() {
   const dryRun = hasFlag('--dry-run');
+  const headless = process.env.LOTO_HEADLESS !== 'false';
+  const browserChannel = process.env.LOTO_BROWSER_CHANNEL || 'chrome';
   const browser = await chromium.launch({
-    channel: process.env.LOTO_BROWSER_CHANNEL || 'chrome',
-    headless: true,
+    channel: browserChannel,
+    headless,
     // Milli Piyango'nun CDN'i bazı otomasyon istemcilerinde HTTP/2 akışını
     // protokol hatasıyla kapatıyor. HTTP/1.1 geri dönüşü veri içeriğini değiştirmez.
     args: ['--disable-http2']
@@ -180,7 +204,16 @@ async function main() {
       console.log(`${game}: ${draws.length} sonuç doğrulandı; son tarih ${draws.at(-1)?.draw_date || '—'}`);
     }
   } catch (error) {
-    await page.screenshot({ path: 'loto-sync-error.png', fullPage: true }).catch(() => {});
+    await writeFile('loto-sync-diagnostics.json', JSON.stringify({
+      failed_at: new Date().toISOString(),
+      error: error?.stack || String(error),
+      page_url: page.url(),
+      browser_channel: browserChannel,
+      browser_version: browser.version(),
+      headless
+    }, null, 2));
+    await page.evaluate(() => window.stop()).catch(() => {});
+    await page.screenshot({ path: 'loto-sync-error.png', fullPage: true, timeout: 10_000 }).catch(() => {});
     throw error;
   } finally {
     await browser.close();

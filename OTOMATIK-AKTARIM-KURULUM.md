@@ -58,6 +58,7 @@ Node.js 22 yüklüyse proje klasöründe:
 ```powershell
 npm ci
 npx playwright install chromium
+$env:LOTO_HEADLESS='false'
 npm run sync:loto:dry
 ```
 
