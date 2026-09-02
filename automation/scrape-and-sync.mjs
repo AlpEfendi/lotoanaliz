@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 const SOURCE_ORIGIN = 'https://www.millipiyangoonline.com';
 const CARD_SELECTOR = '[data-id][data-page-type]';
 const NUMBER_SELECTOR = '[data-testid="draw-list-winning-numbers"] > div > div:last-child';
+const EMPTY_SELECTOR = '[data-testid="no-result-draws"]';
 
 export const GAMES = Object.freeze({
   sayisal: {
@@ -115,16 +116,24 @@ export function parseCard(rawCard, game, config) {
   return draw;
 }
 
-async function openDrawPage(page, url, game) {
+export async function openDrawPage(page, url, game) {
   let lastError;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       // Bazı CDN yanıtları DOMContentLoaded sinyalini tamamlamasa da React
       // içeriği yükleniyor; yanıt başlar başlamaz seçici üzerinden bekliyoruz.
       await page.goto(url, { waitUntil: 'commit', timeout: 60_000 });
+      await page.locator('#draw-year').waitFor({ state: 'visible', timeout: 45_000 });
+      await page.locator('#draw-month').waitFor({ state: 'visible', timeout: 45_000 });
+      // Ayın ilk çekilişi henüz yapılmadıysa resmî sayfa kart yerine bu
+      // açık boş-durum işaretini gösterir. Boş DOM/bağlantı hatası yeterli değildir.
       await page.locator('[data-testid="draw-label-and-number"]').first()
+        .or(page.locator(EMPTY_SELECTOR)).first()
         .waitFor({ state: 'visible', timeout: 45_000 });
-      return;
+      return page.evaluate(() => ({
+        year: Number(document.querySelector('#draw-year').value),
+        month: Number(document.querySelector('#draw-month').value)
+      }));
     } catch (error) {
       lastError = error;
       console.warn(`${game}: resmî sayfa denemesi ${attempt}/2 başarısız: ${error.message}`);
@@ -139,7 +148,12 @@ async function openDrawPage(page, url, game) {
   });
 }
 
-async function selectDrawPeriod(page, game, period) {
+export async function selectDrawPeriod(page, game, period, initialPeriod) {
+  // İlk açılıştaki dönem zaten yüklenmiş durumda. Yeniden filtrelemek, eski
+  // "sonuç yok" yazısını yeni isteğin cevabı sanmamıza neden olabilir.
+  if (initialPeriod?.year === period.year && initialPeriod?.month === period.month) {
+    return page.locator(EMPTY_SELECTOR).isVisible();
+  }
   const year = String(period.year);
   const month = String(period.month);
   if (!await page.locator(`#draw-year option[value="${year}"]`).count()) {
@@ -148,19 +162,30 @@ async function selectDrawPeriod(page, game, period) {
   await page.locator('#draw-year').selectOption(year);
   await page.locator('#draw-month').selectOption(month);
   await page.getByRole('button', { name: 'FİLTRELE' }).click();
-  await page.waitForFunction(({ expectedMonth, expectedYear }) => {
-    const text = document.querySelector('[data-testid="draw-date"]')?.textContent || '';
-    const match = text.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
-    return Boolean(match && Number(match[2]) === expectedMonth && Number(match[3]) === expectedYear);
-  }, { expectedMonth: period.month, expectedYear: period.year }, { timeout: 45_000 });
+  // Geçmiş aylarda sonuç beklenir. Filtre çalışırken ekranda kalabilen eski
+  // boş-durum yazısını kabul etmeyip istenen oyunun/ayın kartlarını bekliyoruz.
+  await page.waitForFunction(({ expectedMonth, expectedYear, pageType }) => {
+    const dates = [...document.querySelectorAll(`[data-id][data-page-type="${pageType}"] [data-testid="draw-date"]`)];
+    return dates.length > 0 && dates.every(element => {
+      const match = element.textContent.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+      return Boolean(match && Number(match[2]) === expectedMonth && Number(match[3]) === expectedYear);
+    });
+  }, { expectedMonth: period.month, expectedYear: period.year, pageType: GAMES[game].pageType }, { timeout: 45_000 });
+  return false;
 }
 
-async function scrapeGame(page, game, config, periods) {
-  await openDrawPage(page, `${SOURCE_ORIGIN}${config.path}`, game);
+export async function scrapeGame(page, game, config, periods) {
+  let initialPeriod = await openDrawPage(page, `${SOURCE_ORIGIN}${config.path}`, game);
   const draws = [];
 
   for (const period of periods) {
-    await selectDrawPeriod(page, game, period);
+    const isEmpty = await selectDrawPeriod(page, game, period, initialPeriod);
+    initialPeriod = null;
+
+    if (isEmpty) {
+      console.log(`${game}: ${period.month}/${period.year} döneminde henüz resmî sonuç yok; diğer dönemlere devam ediliyor.`);
+      continue;
+    }
 
     const rawCards = await page.locator(CARD_SELECTOR).evaluateAll((cards, numberSelector) =>
       cards.map(card => ({
@@ -178,7 +203,11 @@ async function scrapeGame(page, game, config, periods) {
     if (!matchingCards.length) {
       throw new Error(`${game}: ${period.month}/${period.year} için resmî sonuç kartı bulunamadı.`);
     }
-    draws.push(...matchingCards.map(card => parseCard(card, game, config)));
+    const periodDraws = matchingCards.map(card => parseCard(card, game, config));
+    if (periodDraws.some(draw => !draw.draw_date.startsWith(`${period.year}-${String(period.month).padStart(2, '0')}-`))) {
+      throw new Error(`${game}: filtre ${period.month}/${period.year} yerine başka dönemin sonuçlarını döndürdü.`);
+    }
+    draws.push(...periodDraws);
   }
 
   return draws.sort((left, right) => left.draw_date.localeCompare(right.draw_date));
@@ -264,6 +293,10 @@ async function main() {
   const draws = deduplicateDraws(results);
   if (dryRun) {
     console.log(JSON.stringify({ dryRun: true, count: draws.length, draws }, null, 2));
+    return;
+  }
+  if (!draws.length) {
+    console.log(JSON.stringify({ dryRun: false, scraped: 0, status: 'no_results' }, null, 2));
     return;
   }
   const imported = await importToSupabase(draws);
