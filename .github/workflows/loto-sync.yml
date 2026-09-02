@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
       - name: Kaynak kodu al
@@ -40,8 +40,12 @@ jobs:
       - name: Kod ve ay geçişi testleri
         run: npm run check && npm test
 
-      - name: Chromium kur
-        run: npx playwright install --with-deps chromium
+      - name: Hazır Chrome ve sanal ekranı doğrula
+        timeout-minutes: 1
+        # Runner Chrome ve Xvfb içerir; kullanılmayan Chromium tekrar kurulmaz.
+        run: |
+          google-chrome --version
+          command -v xvfb-run
 
       - name: Resmî sonuçları doğrula ve Supabase'e aktar
         # Resmî kaynak başsız tarayıcı bağlantılarını zaman aşımına uğratabildiği

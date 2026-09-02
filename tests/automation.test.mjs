@@ -117,11 +117,14 @@ test('GitHub zamanlayıcısı gizli Supabase anahtarı kullanır', async () => {
   assert.match(workflow, /xvfb-run --auto-servernum npm run sync:loto/);
   assert.match(workflow, /LOTO_HEADLESS: 'false'/);
   assert.match(workflow, /LOTO_MONTHS_BACK:/);
+  assert.match(workflow, /runs-on: ubuntu-24.04/);
+  assert.match(workflow, /google-chrome --version/);
+  assert.doesNotMatch(workflow, /playwright install|apt-get|apt install/);
 });
 
 test('manuel online kontrol yalnız yönetici Edge Function üzerinden tetiklenir', async () => {
   const frontend = await readFile(new URL('../loto.js', import.meta.url), 'utf8');
-  const edgeFunction = await readFile(new URL('../supabase/functions/trigger-loto-sync/index.ts', import.meta.url), 'utf8');
+  const edgeFunction = await readFile(new URL('../supabase/functions/trigger-loto-sync/handler.mjs', import.meta.url), 'utf8');
   assert.match(frontend, /functions\.invoke\('trigger-loto-sync'/);
   assert.match(edgeFunction, /rpc\('is_loto_admin'\)/);
   assert.match(edgeFunction, /GITHUB_ACTIONS_TOKEN/);

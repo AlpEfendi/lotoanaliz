@@ -51,6 +51,10 @@ order by detected_at desc;
 
 `Online sonuçları kontrol et` düğmesi, yönetici oturumunu Supabase'de doğrulayan `trigger-loto-sync` Edge Function üzerinden GitHub iş akışını başlatır. GitHub anahtarı site JavaScript'ine yazılmaz.
 
+Düğme artık tetiklenen GitHub işlem numarasını izler: kuyruk, çalışan adım, başarı, hata, iptal ve GitHub zaman aşımı ayrı gösterilir. Üç dakikanın dolması iş hatası sayılmaz. Geçici bağlantı kaybında `Durumu yeniden kontrol et` aynı işi takip eder. İşlem numarası (gizli anahtar değil) tarayıcıya kaydedilir; sayfa yenilendiğinde veya kategori değiştiğinde yönetici oturumunda izleme sürer. Devam eden bir eşitleme varsa sunucu yeni iş başlatmak yerine onu döndürür.
+
+Başarılı işten sonra arşiv yeniden yüklenir ve varsa **tüm çözülmemiş** kayıt uyuşmazlıkları bildirilir. Bu sayı yalnız son işin çakışma sayısı değildir. Durum takibi mevcut yönetici yetkileriyle çalışır; ek SQL veya genişletilmiş GitHub izni gerekmez.
+
 1. GitHub'da yalnız `AlpEfendi/lotoanaliz` deposuna erişen bir fine-grained personal access token oluşturun. Repository permission olarak **Actions: Read and write** verin.
 2. Supabase **Edge Functions > Secrets** bölümüne `GITHUB_ACTIONS_TOKEN` adıyla bu anahtarı ekleyin.
 3. Supabase CLI ile projeyi bağlayıp fonksiyonu dağıtın:
@@ -69,6 +73,16 @@ Bu gizli anahtarı site dosyalarına, GitHub deposuna veya sohbet ekranına yap�
 Ay başında resmî sayfada `Sonuç bulunamadı` görünmesi normaldir. Otomasyon bu açık boş-durumu hata saymaz; önceki ayı ve diğer oyunları taramaya devam eder. Ocak ayında önceki yılın Aralık ayı seçilir. Geçmiş ayın yüklenememesi, yanlış dönem/oyun kartları veya bağlantı hatası ise başarı sayılmaz. Filtre değişirken ekranda kalan eski boş-durum mesajı yeni yanıt olarak kabul edilmez.
 
 Her otomatik ve manuel çalışmadan önce kod kontrolleri ve ay geçişi regresyon testleri çalışır. Yalnızca güncel ayın istendiği ve bütün oyunların henüz boş olduğu bir çalışmada Supabase'e boş liste gönderilmez (`no_results`); kayıtlar değiştirilmez.
+
+GitHub `ubuntu-24.04` runner üzerindeki hazır Chrome ve Xvfb kullanılır; her seferinde kullanılmayan Chromium/apt kurulumu yapılmaz. Çalışma 12 dakikayla sınırlıdır. Sitenin 20 dakikalık izleme sınırı dolarsa iş iptal edilmez; `Durumu yeniden kontrol et` ile devam edilir.
+
+## Durum göstergesi güncellemesini yayımlama
+
+1. GitHub `main` dalındaki iş akışını güncelleyin.
+2. `trigger-loto-sync` fonksiyonunu yukarıdaki dağıtım komutuyla yeniden dağıtın (aynı gizli anahtarlar korunur).
+3. Web sunucusuna `loto.js` ve dört oyun sayfasını (`sayisal-loto.html`, `super-loto.html`, `sans-topu.html`, `on-numara.html`) birlikte yükleyin. Sayfalarda yeni JS önbellek etiketi `20260902b` bulunur.
+
+Site ayrı hosting üzerindeyse GitHub'a yüklemek HTML/JavaScript dosyalarını bu hostinge kendiliğinden taşımaz. Eski HTML yeni fonksiyonla çalışabilir, ancak yeni durum takibi için beş web dosyası da güncel olmalıdır.
 
 ## Yerel kuru test
 
