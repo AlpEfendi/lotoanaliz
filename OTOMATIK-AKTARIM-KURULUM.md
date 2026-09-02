@@ -66,6 +66,10 @@ Bu gizli anahtarı site dosyalarına, GitHub deposuna veya sohbet ekranına yap�
 
 `.github/workflows/loto-sync.yml` otomasyonu Türkiye saatiyle yaklaşık **00:30** ve **04:30**'da çalıştırır. Her çalışmada mevcut ayla birlikte önceki ay da taranır. Sonuç henüz yayımlanmamışsa bir sonraki çalışmada alınır. GitHub zamanlanmış işleri yoğunluk nedeniyle birkaç dakika geciktirebilir.
 
+Ay başında resmî sayfada `Sonuç bulunamadı` görünmesi normaldir. Otomasyon bu açık boş-durumu hata saymaz; önceki ayı ve diğer oyunları taramaya devam eder. Ocak ayında önceki yılın Aralık ayı seçilir. Geçmiş ayın yüklenememesi, yanlış dönem/oyun kartları veya bağlantı hatası ise başarı sayılmaz. Filtre değişirken ekranda kalan eski boş-durum mesajı yeni yanıt olarak kabul edilmez.
+
+Her otomatik ve manuel çalışmadan önce kod kontrolleri ve ay geçişi regresyon testleri çalışır. Yalnızca güncel ayın istendiği ve bütün oyunların henüz boş olduğu bir çalışmada Supabase'e boş liste gönderilmez (`no_results`); kayıtlar değiştirilmez.
+
 ## Yerel kuru test
 
 Node.js 22 yüklüyse proje klasöründe:

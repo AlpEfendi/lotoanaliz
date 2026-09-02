@@ -37,6 +37,9 @@ jobs:
       - name: Bağımlılıkları kur
         run: npm ci
 
+      - name: Kod ve ay geçişi testleri
+        run: npm run check && npm test
+
       - name: Chromium kur
         run: npx playwright install --with-deps chromium
 
