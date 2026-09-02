@@ -79,9 +79,12 @@ export function validateDraw(draw, config, today = new Date()) {
     month: '2-digit',
     year: 'numeric'
   }).format(drawDate)) !== draw.draw_date) return 'Geçersiz çekiliş tarihi.';
-  const todayInTurkey = new Date(today.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-  todayInTurkey.setHours(23, 59, 59, 999);
-  if (drawDate > todayInTurkey) return 'Gelecek tarihli çekiliş.';
+  // Yerel saate çevrilmiş metni tekrar Date olarak yorumlamak, UTC çalışan
+  // GitHub sunucusunda ertesi günün ilk üç saatini yanlışlıkla kabul ediyordu.
+  const todayInTurkey = toIsoDate(new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: 'numeric'
+  }).format(today));
+  if (draw.draw_date > todayInTurkey) return 'Gelecek tarihli çekiliş.';
   if (!Number.isInteger(draw.week_no) || draw.week_no < 1 || draw.week_no > 9999) return 'Geçersiz çekiliş numarası.';
   if (!Array.isArray(draw.numbers) || draw.numbers.length !== config.count) return `Sonuç ${config.count} sayı içermeli.`;
   if (draw.numbers.some(number => !Number.isInteger(number) || number < 1 || number > config.max)) return `Sayılar 1–${config.max} aralığında olmalı.`;

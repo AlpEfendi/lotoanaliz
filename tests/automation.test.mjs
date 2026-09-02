@@ -79,6 +79,17 @@ test('aynı oyun ve tarihte farklı sonuç kaynak hatası sayılır', () => {
   ]), /iki farklı sonuç/);
 });
 
+test('gelecek tarih sınırı sunucunun değil Türkiye takviminin günüdür', () => {
+  const draw = {
+    game: 'super', draw_date: '2026-09-01', week_no: 1,
+    numbers: [1, 2, 3, 4, 5, 6], bonus: null,
+    source_url: 'https://www.millipiyangoonline.com/super-loto/cekilis-sonuclari/1'
+  };
+  assert.match(validateDraw(draw, GAMES.super, new Date('2026-08-31T20:59:59Z')), /Gelecek/);
+  assert.equal(validateDraw(draw, GAMES.super, new Date('2026-08-31T21:00:00Z')), '');
+  assert.match(validateDraw({ ...draw, draw_date: '2026-09-02' }, GAMES.super, new Date('2026-09-01T12:00:00Z')), /Gelecek/);
+});
+
 test('otomasyon mevcut ayla birlikte önceki ayı ve yıl geçişini tarar', () => {
   assert.deepEqual(getTargetPeriods(1, new Date('2026-08-11T12:00:00+03:00')), [
     { year: 2026, month: 8 },
