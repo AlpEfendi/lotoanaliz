@@ -7,8 +7,9 @@ const vm = require('node:vm');
 const engineSource = fs.readFileSync(path.join(__dirname, '..', 'loto.js'), 'utf8');
 const plain = value => JSON.parse(JSON.stringify(value));
 
-function createEngine({ data = [], stored = '[]', overrides = {} } = {}) {
+function createEngine({ data = [], stored = '[]', overrides = {}, syncRunId = null } = {}) {
   const storage = new Map([['testDraws', stored]]);
+  if (syncRunId) storage.set('lotoOfficialSyncRun', String(syncRunId));
   const context = {
     LOTO_CONFIG: {
       maxNum: 90,
@@ -42,7 +43,8 @@ function createEngine({ data = [], stored = '[]', overrides = {} } = {}) {
     URL: { createObjectURL() { return 'blob:test'; }, revokeObjectURL() {} },
     console,
     setTimeout,
-    clearTimeout
+    clearTimeout,
+    AbortController
   };
   vm.createContext(context);
   vm.runInContext(engineSource, context);
@@ -800,4 +802,97 @@ test('bulut çıkışı başarısızsa oturumu açık tutup doğru hata verir', 
   assert.match(vm.runInContext('logoutErrorMessage', engine), /Çıkış yapılamadı/i);
   assert.equal(vm.runInContext('cloudSession !== null', engine), true);
   assert.equal(vm.runInContext('cloudIsAdmin', engine), true);
+});
+
+function syncEngine(responses, options = {}) {
+  const engine = createEngine(options);
+  engine.replies = responses;
+  vm.runInContext(`
+    var syncCalls = [], syncToasts = [], syncProgress = [], syncWaits = 0, syncLoads = 0;
+    cloudSession = { user: { id: 'admin' } };
+    cloudIsAdmin = true;
+    cloudClient = {};
+    render = () => {};
+    renderCloudPanel = () => { syncProgress.push({ busy: officialSyncBusy, message: officialSyncMessage }); };
+    clearFormError = () => {};
+    showErr = message => { throw new Error(message); };
+    toast = (message, kind) => syncToasts.push({ message, kind });
+    wait = async () => { syncWaits++; };
+    loadCloudDraws = async () => { syncLoads++; return { ok: true }; };
+    requestOfficialSync = async body => {
+      syncCalls.push(body);
+      const next = replies.shift();
+      if (!next) throw new Error('network unavailable');
+      return { ok: true, run: next };
+    };
+  `, engine);
+  return engine;
+}
+
+test('online button follows one exact run beyond the old three-minute limit', async () => {
+  const running = { id: 123, status: 'in_progress', step: 'Kaynak taranıyor' };
+  const engine = syncEngine([
+    { id: 123, status: 'queued' }, ...Array(22).fill(running),
+    { id: 123, status: 'completed', conclusion: 'success', unresolved_conflicts: 0 }
+  ]);
+  await Promise.all([engine.triggerOfficialResultSync(), engine.triggerOfficialResultSync()]);
+  assert.equal(engine.syncCalls.filter(call => call.action === 'start').length, 1);
+  assert.ok(engine.syncCalls.filter(call => call.action === 'status').every(call => call.run_id === 123));
+  assert.equal(engine.syncWaits, 22);
+  assert.equal(engine.syncLoads, 1);
+  assert.equal(engine.storage.has('lotoOfficialSyncRun'), false);
+  assert.match(engine.syncToasts.at(-1).message, /başarıyla tamamlandı/);
+  assert.equal(vm.runInContext('officialSyncBusy', engine), false);
+});
+
+for (const conclusion of ['failure', 'cancelled', 'timed_out']) {
+  test(`online button reports ${conclusion} promptly without claiming success`, async () => {
+    const engine = syncEngine([{ id: 123, status: 'completed', conclusion, step: 'Hazırlık' }], { syncRunId: 123 });
+    await engine.triggerOfficialResultSync();
+    assert.equal(engine.syncCalls[0].action, 'status');
+    assert.equal(engine.syncLoads, 0);
+    assert.equal(engine.syncToasts.at(-1).kind, 'warn');
+    assert.match(engine.syncToasts.at(-1).message, /tamamlanamadı/);
+    assert.equal(engine.storage.has('lotoOfficialSyncRun'), false);
+  });
+}
+
+test('page refresh/category navigation resumes saved run without dispatch', async () => {
+  const engine = syncEngine([{ id: 444, status: 'completed', conclusion: 'success' }], { syncRunId: 444 });
+  await engine.triggerOfficialResultSync();
+  assert.deepEqual(plain(engine.syncCalls), [{ action: 'status', run_id: 444 }]);
+});
+
+test('network failure retains run ID; retry checks the same job', async () => {
+  const engine = syncEngine([], { syncRunId: 123 });
+  await engine.triggerOfficialResultSync();
+  assert.equal(engine.storage.get('lotoOfficialSyncRun'), '123');
+  assert.match(engine.syncToasts.at(-1).message, /doğrulanamıyor/);
+  engine.replies.push({ id: 123, status: 'completed', conclusion: 'success' });
+  await engine.triggerOfficialResultSync();
+  assert.ok(engine.syncCalls.every(call => call.action === 'status'));
+  assert.equal(engine.syncLoads, 1);
+});
+
+test('tracking budget exhaustion is not reported as workflow failure', async () => {
+  const engine = syncEngine(Array(120).fill({ id: 123, status: 'queued' }), { syncRunId: 123 });
+  await engine.triggerOfficialResultSync();
+  assert.equal(engine.storage.get('lotoOfficialSyncRun'), '123');
+  assert.match(engine.syncToasts.at(-1).message, /İzleme duraklatıldı/);
+  assert.equal(engine.syncLoads, 0);
+});
+
+test('unresolved conflicts remain visible after a successful job', async () => {
+  const engine = syncEngine([{ id: 123, status: 'completed', conclusion: 'success', unresolved_conflicts: 2 }], { syncRunId: 123 });
+  await engine.triggerOfficialResultSync();
+  assert.match(engine.syncToasts.at(-1).message, /2 çözülmemiş/);
+  assert.equal(engine.syncToasts.at(-1).kind, 'warn');
+  assert.equal(engine.syncLoads, 1);
+});
+
+test('wrong run ID cannot be mistaken for completion', async () => {
+  const engine = syncEngine(Array(3).fill({ id: 999, status: 'completed', conclusion: 'success' }), { syncRunId: 123 });
+  await engine.triggerOfficialResultSync();
+  assert.equal(engine.syncLoads, 0);
+  assert.equal(engine.storage.get('lotoOfficialSyncRun'), '123');
 });

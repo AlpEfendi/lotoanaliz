@@ -1417,6 +1417,26 @@ function bindDeleteActions() {
 let cloudState = 'idle';
 let supabaseLoadPromise = null;
 let cloudAdminReady = null;
+let officialSyncBusy = false;
+let officialSyncMessage = '';
+let officialSyncRunId = readOfficialSyncRunId();
+let officialSyncDisplayRunId = officialSyncRunId;
+
+function readOfficialSyncRunId() {
+  try {
+    const id = Number(localStorage.getItem('lotoOfficialSyncRun'));
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+  } catch { return null; }
+}
+
+function saveOfficialSyncRunId(id) {
+  officialSyncRunId = id;
+  if (id) officialSyncDisplayRunId = id;
+  try {
+    if (id) localStorage.setItem('lotoOfficialSyncRun', String(id));
+    else localStorage.removeItem('lotoOfficialSyncRun');
+  } catch { /* Depolama kapalıysa mevcut sayfada izlemeye devam edilir. */ }
+}
 
 function appendCloudSummary(panel, title, detail) {
   const summary = document.createElement('div');
@@ -1459,14 +1479,29 @@ function renderCloudPanel() {
     const actions = document.createElement('div');
     actions.className = 'cloud-actions';
     if (cloudIsAdmin) {
-      appendCloudSummary(panel, 'Bulut senkronizasyonu açık', cloudSession.user?.email || 'Yönetici');
-      const officialSyncButton = createCloudButton('Online sonuçları kontrol et', triggerOfficialResultSync);
+      appendCloudSummary(panel, 'Bulut senkronizasyonu açık', officialSyncMessage || cloudSession.user?.email || 'Yönetici');
+      const officialSyncButton = createCloudButton(
+        officialSyncBusy ? (officialSyncRunId ? 'İşlem izleniyor…' : 'Kontrol başlatılıyor…')
+          : officialSyncRunId ? 'Durumu yeniden kontrol et' : 'Online sonuçları kontrol et',
+        triggerOfficialResultSync
+      );
       officialSyncButton.classList.add('online-sync-btn');
+      officialSyncButton.disabled = officialSyncBusy;
+      officialSyncButton.setAttribute('aria-busy', String(officialSyncBusy));
       actions.append(
         createCloudButton('Mevcut arşivi buluta aktar', syncArchiveToCloud),
         officialSyncButton,
         createCloudButton('Çıkış', cloudLogout)
       );
+      if (officialSyncDisplayRunId) {
+        const link = document.createElement('a');
+        link.className = 'btn-sm';
+        link.textContent = 'İşlem ayrıntıları';
+        link.href = `https://github.com/AlpEfendi/lotoanaliz/actions/runs/${officialSyncDisplayRunId}`;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        actions.appendChild(link);
+      }
     } else {
       appendCloudSummary(
         panel,
@@ -1807,6 +1842,7 @@ async function cloudLogin() {
     if (syncResult.error) toast(`Giriş başarılı; yerel kayıtlar eşitlenemedi: ${syncResult.error}`, 'warn');
     else if (syncResult.warning) toast(syncResult.warning, 'warn');
     else toast(syncResult.synced ? `Giriş başarılı · ${syncResult.synced} yerel kayıt eşitlendi` : 'Yönetici girişi başarılı');
+    if (officialSyncRunId) void triggerOfficialResultSync();
   } catch (e) {
     showCloudError(`Giriş başarısız: ${e.message || 'ağ hatası'}`, 'cloudPassword');
   }
@@ -1885,37 +1921,12 @@ function wait(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
-async function waitForOfficialSync(requestedAfter) {
-  for (let attempt = 0; attempt < 45; attempt += 1) {
-    await wait(4000);
-    const { data, error } = await cloudClient
-      .from('loto_sync_runs')
-      .select('id,finished_at,status,inserted_count,skipped_count,conflict_count')
-      .gte('started_at', requestedAfter)
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (data?.finished_at) return data;
-  }
-  throw new Error('Kontrol başlatıldı ancak üç dakika içinde tamamlanmadı. GitHub Actions durumunu kontrol edin.');
-}
-
-async function triggerOfficialResultSync(event) {
-  clearFormError();
-  if (!cloudSession || !cloudIsAdmin || !cloudClient) return showErr('Yetkili yönetici girişi gerekli.');
-  const button = event?.currentTarget;
-  const originalLabel = button?.textContent || 'Online sonuçları kontrol et';
-  const requestedAfter = new Date(Date.now() - 5000).toISOString();
-  if (button) {
-    button.disabled = true;
-    button.setAttribute('aria-busy', 'true');
-    button.textContent = 'Kontrol başlatılıyor…';
-  }
-
+async function requestOfficialSync(body) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 35_000);
   try {
     const { data, error } = await cloudClient.functions.invoke('trigger-loto-sync', {
-      body: { requested_from: gameId() }
+      body, signal: controller.signal
     });
     if (error) {
       let detail = error.message;
@@ -1923,27 +1934,90 @@ async function triggerOfficialResultSync(event) {
         const payload = await error.context?.json();
         if (payload?.error) detail = payload.error;
       } catch {}
-      throw new Error(detail || 'Otomasyon başlatılamadı.');
+      throw new Error(detail || 'Online işlem bilgisi alınamadı.');
     }
-    if (data?.ok !== true) throw new Error(data?.error || 'Otomasyon başlatılamadı.');
+    if (data?.ok !== true || !Number.isSafeInteger(data.run?.id) || data.run.id < 1) {
+      throw new Error(data?.error || 'Online işlem numarası alınamadı; sunucu güncellemesini kontrol edin.');
+    }
+    return data;
+  } finally { clearTimeout(timeout); }
+}
 
-    if (button) button.textContent = 'Sonuçlar kontrol ediliyor…';
-    toast('Online sonuç kontrolü başlatıldı; resmî kaynak taranıyor.');
-    const run = await waitForOfficialSync(requestedAfter);
+function officialSyncProgress(run) {
+  if (run.status === 'in_progress') return run.step ? `Devam ediyor: ${run.step}` : 'Online kontrol çalışıyor…';
+  if (run.status === 'completed') return 'İşlem tamamlandı; sonuç kontrol ediliyor…';
+  return 'GitHub sırasında bekliyor; yeni bir işlem başlatmanıza gerek yok.';
+}
+
+async function waitForOfficialSync(runId, onProgress = () => {}) {
+  let failures = 0;
+  const userId = cloudSession?.user?.id;
+  // Kuyruk + 12 dakikalık iş sınırını kapsar. İzleme sınırı bir iş hatası değildir.
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (!cloudIsAdmin || !cloudSession || cloudSession.user?.id !== userId) return { status: 'stopped' };
+    try {
+      const { run } = await requestOfficialSync({ action: 'status', run_id: runId });
+      if (!cloudIsAdmin || !cloudSession || cloudSession.user?.id !== userId) return { status: 'stopped' };
+      if (run.id !== runId) throw new Error('İşlem numarası eşleşmiyor.');
+      failures = 0;
+      onProgress(officialSyncProgress(run));
+      if (run.status === 'completed') return run;
+    } catch (error) {
+      failures += 1;
+      onProgress('Durum bağlantısı gecikti; aynı işlem yeniden kontrol ediliyor…');
+      if (failures >= 3) throw error;
+    }
+    await wait(10_000);
+  }
+  return { status: 'tracking_paused' };
+}
+
+async function triggerOfficialResultSync() {
+  if (officialSyncBusy) return;
+  clearFormError();
+  if (!cloudSession || !cloudIsAdmin || !cloudClient) return showErr('Yetkili yönetici girişi gerekli.');
+  officialSyncBusy = true;
+  officialSyncMessage = officialSyncRunId ? 'Mevcut işlemin durumu kontrol ediliyor…' : 'Online kontrol başlatılıyor…';
+  renderCloudPanel();
+  try {
+    if (!officialSyncRunId) {
+      const data = await requestOfficialSync({ action: 'start', requested_from: gameId() });
+      saveOfficialSyncRunId(data.run.id);
+      toast(data.reused ? 'Devam eden online kontrol izleniyor; yeni iş başlatılmadı.' : 'Online sonuç kontrolü başlatıldı.');
+    }
+    const run = await waitForOfficialSync(officialSyncRunId, message => {
+      officialSyncMessage = message;
+      renderCloudPanel();
+    });
+    if (run.status === 'stopped') return;
+    if (run.status === 'tracking_paused') {
+      officialSyncMessage = 'İşlem henüz bitmedi. İzleme duraklatıldı; Durumu yeniden kontrol et ile aynı işlemi izleyebilirsiniz.';
+      toast(officialSyncMessage, 'warn');
+      return;
+    }
+    if (run.conclusion !== 'success') {
+      const reasons = { failure: 'hata oluştu', cancelled: 'iptal edildi', timed_out: 'GitHub çalışma süresi doldu', action_required: 'GitHub onay bekliyor' };
+      officialSyncMessage = `Online kontrol tamamlanamadı: ${reasons[run.conclusion] || run.conclusion || 'sonuç doğrulanamadı'}${run.step ? ` (${run.step})` : ''}. İşlem ayrıntılarını inceleyebilirsiniz.`;
+      saveOfficialSyncRunId(null);
+      toast(officialSyncMessage, 'warn');
+      return;
+    }
     const cloudResult = await loadCloudDraws();
     if (!cloudResult.ok) throw new Error(`Sonuçlar işlendi ancak bulut arşivi yenilenemedi: ${cloudResult.error}`);
+    saveOfficialSyncRunId(null);
+    officialSyncMessage = run.unresolved_conflicts
+      ? `Online kontrol tamamlandı; ${run.unresolved_conflicts} çözülmemiş kayıt uyuşmazlığı inceleme bekliyor. Mevcut kayıtlar korundu.`
+      : 'Online kontrol başarıyla tamamlandı; bulut arşivi yenilendi.';
     render();
-    const summary = `${run.inserted_count} yeni, ${run.skipped_count} zaten kayıtlı`;
-    if (run.conflict_count) toast(`Online kontrol tamamlandı: ${summary}, ${run.conflict_count} çakışma inceleme bekliyor.`, 'warn');
-    else toast(`Online kontrol tamamlandı: ${summary}.`);
+    toast(officialSyncMessage, run.unresolved_conflicts ? 'warn' : undefined);
   } catch (error) {
-    toast(`Online kontrol başlatılamadı: ${error.message || 'ağ hatası'}`, 'warn');
+    officialSyncMessage = officialSyncRunId
+      ? `İşlem durumu şu anda doğrulanamıyor: ${error.message || 'ağ hatası'}. Durumu yeniden kontrol et düğmesi aynı işlemi izler.`
+      : `Online kontrol isteği doğrulanamadı: ${error.message || 'ağ hatası'}`;
+    toast(officialSyncMessage, 'warn');
   } finally {
-    if (button?.isConnected) {
-      button.disabled = false;
-      button.removeAttribute('aria-busy');
-      button.textContent = originalLabel;
-    }
+    officialSyncBusy = false;
+    renderCloudPanel();
   }
 }
 
@@ -1981,6 +2055,7 @@ async function initCloud() {
     toast(`Bulut bağlantısı kurulamadı: ${e.message || 'ağ hatası'}`, 'warn');
   }
   renderCloudPanel();
+  if (cloudIsAdmin && officialSyncRunId) void triggerOfficialResultSync();
 }
 
 // Auto-format tarih
